@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, urlparse
 
 # WDA is reached through a Unix socket, not a TCP port. WDA allows any origin
 # and has no authentication, so a TCP port would let any website control the iPhone.
-WDA_SOCKET = os.environ.get("PHONE_REMOTE_WDA_SOCKET", os.path.expanduser("~/.tapstream/wda.sock"))
+WDA_SOCKET = os.environ.get("PHONE_REMOTE_WDA_SOCKET", os.path.expanduser("~/.glasstap/wda.sock"))
 # Every request must carry this token, so that other local users and other
 # websites cannot see or control the iPhone.
 TOKEN = os.environ.get("PHONE_REMOTE_TOKEN", "")
@@ -140,7 +140,7 @@ class Handler(BaseHTTPRequestHandler):
         # the token from the URL fragment, which the browser never sends to a server.
         if self.command == "GET" and urlparse(self.path).path == "/":
             return True
-        token = self.headers.get("X-Tapstream") or parse_qs(urlparse(self.path).query).get("token", [""])[0]
+        token = self.headers.get("X-Glasstap") or parse_qs(urlparse(self.path).query).get("token", [""])[0]
         return hmac.compare_digest(token, TOKEN)
 
     def reply(self, code, body, ctype="application/json"):

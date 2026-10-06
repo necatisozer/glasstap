@@ -104,7 +104,7 @@ func broadcast(_ frame: Data, key: Bool) {
 
 /// The token that phone-remote writes for each run. Read on each request, so a new run needs no restart.
 func readToken() -> String? {
-    let path = NSHomeDirectory() + "/.tapstream/token"
+    let path = NSHomeDirectory() + "/.glasstap/token"
     guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
     let token = text.trimmingCharacters(in: .whitespacesAndNewlines)
     return token.isEmpty ? nil : token

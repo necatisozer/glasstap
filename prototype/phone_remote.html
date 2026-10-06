@@ -167,7 +167,7 @@ const VIDEO = '__VIDEO__', FRAMES = '__FRAMES__';
 // phone-remote opens this page with #token=. Every request must carry it. A URL
 // fragment never goes to a server, so the token stays out of request logs.
 const TOKEN = new URLSearchParams(location.hash.slice(1)).get('token') || '';
-const auth = { 'X-Tapstream': TOKEN };
+const auth = { 'X-Glasstap': TOKEN };
 const $ = id => document.getElementById(id);
 const img = $('screen'), overlay = $('overlay');
 let size = { width: 393, height: 852 }, down = null, count = 0;

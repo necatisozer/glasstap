@@ -93,7 +93,7 @@ def encoded():
 def read_token():
     """The token of this run, or None. With no token, the relay refuses every request."""
     try:
-        with open(os.path.expanduser("~/.tapstream/token")) as f:
+        with open(os.path.expanduser("~/.glasstap/token")) as f:
             return f.read().strip() or None
     except OSError:
         return None
