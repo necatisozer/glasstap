@@ -148,6 +148,12 @@ public enum XcodebuildOutput {
         return lower.contains("error") && deviceNotReadyPhrases.contains(where: lower.contains)
     }
 
+    /// A test run on a locked iPhone prints `"Unlock <name> to Continue"` and waits. It goes on by itself
+    /// after the unlock.
+    public static func isWaitingForUnlock(_ line: String) -> Bool {
+        line.contains("com.apple.dt.deviceprep") && line.contains("Unlock ") && line.contains(" to Continue")
+    }
+
     public static let signingHint = "WebDriverAgent could not be signed or installed. Open Xcode > Settings > Accounts and sign in. "
         + "If the iPhone asks, trust your developer in Settings > General > VPN & Device Management."
 }

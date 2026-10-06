@@ -64,8 +64,7 @@ import Testing
     // MARK: - xcodebuild output
 
     @Test func serverURLLineFromARealRun() throws {
-        let lines = String(decoding: try fixture("xcodebuild-test-without-building.txt"), as: UTF8.self)
-            .split(separator: "\n").map(String.init)
+        let lines = try fixtureLines("xcodebuild-test-without-building.txt")
         let found = lines.compactMap(XcodebuildOutput.serverURL(in:))
         #expect(found == [URL(string: "http://192.0.2.10:8100")!])
         #expect(found.first?.port == 8100)
@@ -120,6 +119,14 @@ import Testing
         #expect(!XcodebuildOutput.isDeviceNotReady("error: use of unresolved identifier 'x'"))
         // A compile error about API availability is no device problem.
         #expect(!XcodebuildOutput.isDeviceNotReady("error: 'foo()' is unavailable in iOS"))
+    }
+
+    @Test func aTestRunOnALockedIPhoneWaitsForTheUnlock() throws {
+        let matches = try fixtureLines("xcodebuild-locked.txt").filter(XcodebuildOutput.isWaitingForUnlock)
+        #expect(matches.count == 1)
+        #expect(matches.first?.contains("Unlock Test’s iPhone to Continue") == true)
+        #expect(!XcodebuildOutput.isWaitingForUnlock("Testing started"))
+        #expect(!XcodebuildOutput.isWaitingForUnlock("Unlock the door to Continue"))
     }
 
     @Test func theScanDecidesTheKindOfFailure() {

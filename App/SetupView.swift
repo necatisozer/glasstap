@@ -147,7 +147,7 @@ struct SetupView: View {
         let state: CheckState = switch status.state {
         case .failed: .problem
         case .running: .ok
-        case .notConfigured: .waiting
+        case .notConfigured, .waitingForUnlock: .waiting
         default: .checking
         }
         let summary = status.state.summary(teamSet: !model.settings.teamID.isEmpty).capitalizedFirst

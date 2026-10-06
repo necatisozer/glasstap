@@ -218,6 +218,7 @@ extension WDAState {
         case .downloading: "downloading"
         case .building: "building"
         case .starting: "starting"
+        case .waitingForUnlock: "waiting-for-unlock"
         case .running: "running"
         case .restarting: "restarting"
         case .failed: "failed"
