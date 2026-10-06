@@ -14,8 +14,8 @@ extension DeviceDirectory {
 
 extension DeviceRoute {
     static func fake(captureID: String, udid: String?, name: String, hub: ViewerHub = ViewerHub()) -> DeviceRoute {
-        DeviceRoute(captureID: captureID, udid: udid, name: name, state: "running", wda: "running", hub: hub,
-                    client: WDAClient(baseURL: URL(string: "http://127.0.0.1:1")!))
+        DeviceRoute(captureID: captureID, name: name, hub: hub, client: WDAClient(baseURL: URL(string: "http://127.0.0.1:1")!),
+                    udid: udid, state: "running", wda: "running")
     }
 }
 
@@ -72,10 +72,6 @@ extension DeviceRoute {
 
         #expect(try await status(URLRequest(url: URL(string: base + "/info")!)).0 == 403)
         #expect(try await status(URLRequest(url: URL(string: base + "/screenshot?token=\(token.value)")!)).0 == 502)
-
-        server.setVideoPort(40000)
-        let (_, moved) = try await status(URLRequest(url: URL(string: base + "/")!))
-        #expect(String(decoding: moved, as: UTF8.self) == "<p>video on 40000</p>")
     }
 
     @Test func videoServer() async throws {

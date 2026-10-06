@@ -4,9 +4,11 @@ import Foundation
 /// another Mac reads the file over SSH, because "Copy Viewer Link" works only at this Mac's screen.
 public struct ViewerLink: Sendable {
     /// The token goes in the fragment, which the browser never sends to a server. `device` names
-    /// one iPhone. Without it, the page uses the only iPhone, or asks which one.
-    public static func url(controlPort: UInt16, token: AccessToken, device: String? = nil) -> URL {
-        var link = "http://127.0.0.1:\(controlPort)/#token=\(token.value)"
+    /// one iPhone. Without it, the page uses the only iPhone, or asks which one. `host` is the
+    /// address that the listeners are bound to.
+    public static func url(controlPort: UInt16, token: AccessToken, device: String? = nil,
+                           host: String = ListenAddress.loopback) -> URL {
+        var link = "http://\(IPLiteral.urlHost(host)):\(controlPort)/#token=\(token.value)"
         if let device, let encoded = device.addingPercentEncoding(withAllowedCharacters: idCharacters) {
             link += "&device=\(encoded)"
         }

@@ -139,9 +139,15 @@ VideoToolbox accepts a new `AverageBitRate` on a running session, so a change ne
 
 ## Listen address
 
-- The settings offer **This Mac only** (127.0.0.1, the default) and a list of the Mac's other addresses, with the Tailscale address marked.
-- Any address other than 127.0.0.1 needs a confirmation, because the traffic then leaves the Mac without encryption, unless it goes through Tailscale.
-- The token rules stay the same. The Host and Origin checks accept the chosen address.
+- The settings offer **This Mac only** (127.0.0.1, the default) and a list of the Mac's other addresses. The app reads the addresses with `getifaddrs`, from the interfaces that are up. It skips loopback and link-local addresses, because 127.0.0.1 is the first choice and a link-local address needs a scope. It marks an address in 100.64.0.0/10 or fd7a:115c:a1e0::/48 as Tailscale. Each row shows the interface name.
+- Any address other than 127.0.0.1 needs a confirmation when the user clicks **Apply**, because the traffic then leaves the Mac without encryption, unless it goes through Tailscale. Anyone on that network who gets the link can see and control the iPhone.
+- Both listeners bind to the chosen address only. The app never binds to the unspecified address (0.0.0.0 or ::), and the settings refuse it.
+- A move to an address starts both listeners and waits until both are ready. Only then do the menu and the link file show the new address. If a listener fails or waits, the app tries again after 1, 2 and 4 s. A new IPv6 address cannot be bound for a moment after its interface comes up, and the retries cover that. If the address still fails, the listeners go to 127.0.0.1, and the menu says why. The app tries the address again when the addresses of the Mac or the settings change.
+- Each move gets a new token: a new address or port in the settings, a fallback to 127.0.0.1, and the move back. The link file is written again, and the open viewers close. So a link to an address that the app left is of no use, also if another local user binds that address and port later.
+- The token rules stay the same. The Host check accepts 127.0.0.1, `localhost` and the chosen address, with or without a port. An IPv6 address must be in brackets, and any spelling of the same address passes. The video listener accepts the viewer origins of the same three hosts. In loopback mode, the checks are the same as before.
+- The viewer link and the link file use the chosen address.
+- The app reads the addresses when the network changes (`NWPathMonitor`), when the app comes to the front, and every 30 s in case a change has no network event. If the chosen address goes, for example when its interface is down, the listeners move to 127.0.0.1, and the menu says so. When the address comes back, the listeners move back. Each move closes the open viewers.
+- The list does not offer a `utun` interface, unless its address is a Tailscale address. The CoreDevice tunnel of each iPhone is a `utun` interface with an fd… address. That address changes at each plug-in, and a connection from the Mac itself to it did not answer. Other VPNs that use `utun` are not offered either.
 
 ## Spike S4: delay
 
@@ -157,10 +163,11 @@ The README then states the delay on a LAN and on a 1.6 Mbit/s link.
 - No forwarder listens on `127.0.0.1:8100` any more. This removes the risk that any local user reaches WDA through that port.
 - **Open risk:** the CoreDevice tunnel address may be open to every local process on the host Mac. v0.2 must test this with a second user account. If it is open, the risk moves rather than goes away.
 - **Unchanged risk:** WDA still listens on the iPhone's Wi-Fi address. WDA has no setting to stop that. The README keeps the warning.
+- **Listen address:** on an address other than 127.0.0.1, the token and the stream go over the network. Only Tailscale encrypts them. On another network, anyone who reads the traffic can take the token, and then see and control the iPhone. The confirmation and the README say this. The Host check still blocks DNS rebinding, because it accepts only the chosen address and the loopback names.
 
 ## Testing
 
-- **Unit tests:** parsing of `devicectl` JSON and of the `ServerURLHere` line, the restart backoff, name matching with duplicate names, the bitrate controller, and the address checks.
+- **Unit tests:** parsing of `devicectl` JSON and of the `ServerURLHere` line, the restart backoff, name matching with duplicate names, the bitrate controller, the address checks, the session registry, the routes with and without `/devices/<id>`, the classes of listen addresses, and the fallback to 127.0.0.1.
 - **Device tests:** the iPhone 12 Pro on this Mac:
   1. First run on a clean user: the app downloads, builds and starts WDA with no other step.
   2. Unplug and plug the iPhone: capture and WDA come back by themselves.

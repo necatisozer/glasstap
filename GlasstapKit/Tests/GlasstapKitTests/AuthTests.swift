@@ -27,14 +27,19 @@ import Testing
     }
 
     @Test func hostCheck() {
-        #expect(Auth.isLoopbackHost("127.0.0.1"))
-        #expect(Auth.isLoopbackHost("127.0.0.1:9300"))
-        #expect(Auth.isLoopbackHost("localhost:9301"))
-        #expect(!Auth.isLoopbackHost(nil))
-        #expect(!Auth.isLoopbackHost(""))
-        #expect(!Auth.isLoopbackHost("evil.example:9300"))
-        #expect(!Auth.isLoopbackHost("127.0.0.1.evil.example"))
-        #expect(!Auth.isLoopbackHost("[::1]:9300"))
+        func allowed(_ host: String?) -> Bool { Auth.isAllowedHost(host, listen: ListenAddress.loopback) }
+        #expect(allowed("127.0.0.1"))
+        #expect(allowed("127.0.0.1:9300"))
+        #expect(allowed("localhost:9301"))
+        #expect(!allowed(nil))
+        #expect(!allowed(""))
+        #expect(!allowed("evil.example:9300"))
+        #expect(!allowed("127.0.0.1.evil.example"))
+        #expect(!allowed("[::1]:9300"))
+        #expect(!allowed("[127.0.0.1]:9300"))
+        // A port must be digits.
+        #expect(!allowed("127.0.0.1:"))
+        #expect(!allowed("localhost:x"))
     }
 
     @Test func controlPageLoadsWithoutToken() {

@@ -1,8 +1,8 @@
 import Foundation
 import Network
 
-/// Serves each iPhone's stream to its newest viewer on 127.0.0.1:<port>, at `/devices/<id>/video`,
-/// or at `/video` while only one iPhone is connected.
+/// Serves each iPhone's stream to its newest viewer on <address>:<port>, at `/devices/<id>/video`,
+/// or at `/video` while only one iPhone is connected. The address is 127.0.0.1 unless the user chose another one.
 public final class VideoServer: @unchecked Sendable {
     private let token: AccessToken
     private let devices: DeviceDirectory
@@ -11,24 +11,16 @@ public final class VideoServer: @unchecked Sendable {
     private var viewerOrigins: Set<String>
 
     /// `controlPort` gives the origin of the viewer page, which alone may read the stream.
-    public init(port: UInt16, controlPort: UInt16, token: AccessToken, devices: DeviceDirectory,
-                onState: @escaping @Sendable (ListenerState) -> Void) {
+    public init(port: UInt16, address: String = ListenAddress.loopback, controlPort: UInt16, token: AccessToken,
+                devices: DeviceDirectory, onState: @escaping @Sendable (ListenerState) -> Void) {
         self.token = token
         self.devices = devices
-        viewerOrigins = Auth.viewerOrigins(controlPort: controlPort)
-        listener = LoopbackListener(name: "video-server", port: port, onState: onState)
+        viewerOrigins = Auth.viewerOrigins(controlPort: controlPort, listen: address)
+        listener = LoopbackListener(name: "video-server", address: address, port: port, onState: onState)
     }
 
     public func start() {
         listener.start { [weak self] in self?.accept($0) }
-    }
-
-    /// The viewer page moved to another port. Its old origin loses access.
-    public func setControlPort(_ port: UInt16) {
-        listener.queue.async { [self] in
-            viewerOrigins = Auth.viewerOrigins(controlPort: port)
-            devices.leaveAll()
-        }
     }
 
     public func stop() {
@@ -43,7 +35,7 @@ public final class VideoServer: @unchecked Sendable {
     }
 
     private func handle(_ request: HTTPRequest, on connection: NWConnection) {
-        switch Auth.video(request, token: token, viewerOrigins: viewerOrigins) {
+        switch Auth.video(request, token: token, viewerOrigins: viewerOrigins, listen: listener.address) {
         case let .reject(status):
             Listener.respond(connection, .text(status, status == 404 ? "not found" : "forbidden"))
         case let .accept(corsOrigin):

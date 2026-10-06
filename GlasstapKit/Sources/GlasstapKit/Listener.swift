@@ -5,22 +5,28 @@ import os
 public enum ListenerState: Sendable, Equatable {
     case stopped
     case ready
+    /// The listener waits, for example for an address that this Mac does not have now.
+    case waiting(String)
     case failed(String)
 }
 
-/// The lifecycle of one loopback listener, shared by both servers. Its queue also
+/// The lifecycle of one listener on one address, shared by both servers. Its queue also
 /// serves the connections, and the server keeps its own state on it.
 final class LoopbackListener: @unchecked Sendable {
     let queue: DispatchQueue
+    /// 127.0.0.1, or the listen address from the settings. Never the unspecified address.
+    let address: String
     private let port: UInt16
     private let onState: @Sendable (ListenerState) -> Void
     private let log: Logger
     // Touched only on `queue`.
     private var listener: NWListener?
 
-    init(name: String, port: UInt16, onState: @escaping @Sendable (ListenerState) -> Void) {
+    init(name: String, address: String = ListenAddress.loopback, port: UInt16,
+         onState: @escaping @Sendable (ListenerState) -> Void) {
         queue = DispatchQueue(label: "glasstap.\(name)")
         log = Logger(subsystem: "io.github.necatisozer.glasstap", category: name)
+        self.address = address
         self.port = port
         self.onState = onState
     }
@@ -28,11 +34,13 @@ final class LoopbackListener: @unchecked Sendable {
     func start(accept: @escaping @Sendable (NWConnection) -> Void) {
         queue.async { [self] in
             do {
-                let listener = try Listener.loopback(port: port)
+                let listener = try Listener.bind(address: address, port: port)
                 listener.newConnectionHandler = accept
-                listener.stateUpdateHandler = { [log, port, onState] state in
+                listener.stateUpdateHandler = { [log, address, port, onState] state in
                     guard let mapped = Listener.state(state) else { return }
-                    if case let .failed(e) = mapped { log.error("listener on \(port) failed: \(e, privacy: .public)") }
+                    if case let .failed(e) = mapped {
+                        log.error("listener on \(address, privacy: .public) port \(port) failed: \(e, privacy: .public)")
+                    }
                     onState(mapped)
                 }
                 listener.start(queue: queue)
@@ -56,14 +64,17 @@ final class LoopbackListener: @unchecked Sendable {
 }
 
 enum Listener {
-    /// A TCP listener on 127.0.0.1 only. Nothing outside this Mac can connect.
-    static func loopback(port: UInt16) throws -> NWListener {
-        guard let nwPort = NWEndpoint.Port(rawValue: port) else { throw NWError.posix(.EINVAL) }
+    /// A TCP listener on this one address. An address that is not an IP literal, or the unspecified
+    /// address, is refused: it would listen on more than the user chose.
+    static func bind(address: String, port: UInt16) throws -> NWListener {
+        guard let nwPort = NWEndpoint.Port(rawValue: port), let literal = IPLiteral.canonical(address),
+              ListenAddress.isBindable(literal)
+        else { throw NWError.posix(.EINVAL) }
         let params = NWParameters.tcp
         // A restart can bind the port again at once. This does not let another
         // process bind the same port: a second bind, even with SO_REUSEPORT, fails (tested).
         params.allowLocalEndpointReuse = true
-        params.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: nwPort)
+        params.requiredLocalEndpoint = .hostPort(host: NWEndpoint.Host(literal), port: nwPort)
         return try NWListener(using: params)
     }
 
@@ -71,6 +82,7 @@ enum Listener {
         switch state {
         case .ready: .ready
         case let .failed(error): .failed(error.localizedDescription)
+        case let .waiting(error): .waiting(error.localizedDescription)
         case .cancelled: .stopped
         default: nil
         }

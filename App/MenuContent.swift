@@ -13,10 +13,15 @@ struct MenuContent: View {
             // Only the first iPhone gets the shortcuts: a menu cannot give one shortcut to two items.
             DeviceSection(model: model, session: session, isFirst: index == 0)
         }
-        if case let .failed(message) = model.controlState {
+        if let notice = model.listenNotice {
+            Text(notice)
+        } else if model.boundAddress != ListenAddress.loopback {
+            Text("Listening on \(model.boundAddress)")
+        }
+        if let message = model.controlState.problem {
             Text("Viewer port \(String(model.settings.controlPort)) unavailable: \(message)")
         }
-        if case let .failed(message) = model.videoState {
+        if let message = model.videoState.problem {
             Text("Video port \(String(model.settings.videoPort)) unavailable: \(message)")
         }
 
@@ -124,5 +129,15 @@ struct MenuBarIcon: View {
         if model.sessions.isEmpty { return "iphone.slash" }
         let watched = model.sessions.contains { $0.captureStatus == .running && $0.viewerConnected }
         return watched ? "iphone.radiowaves.left.and.right" : "iphone"
+    }
+}
+
+extension ListenerState {
+    /// Why the listener does not serve, for the menu.
+    var problem: String? {
+        switch self {
+        case let .failed(message), let .waiting(message): message
+        case .ready, .stopped: nil
+        }
     }
 }
