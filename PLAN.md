@@ -1,10 +1,8 @@
-# tapstream: project plan
-
-`tapstream` is a working name. See [Decisions](#decisions).
+# glasstap: project plan
 
 ## Goal
 
-tapstream shows a physical iPhone live in a browser and lets you tap, swipe and type on it. The iPhone connects over USB to a Mac (the host). The viewer can be on another computer, also on a slow link and behind NAT.
+glasstap shows a physical iPhone live in a browser and lets you tap, swipe and type on it. The iPhone connects over USB to a Mac (the host). The viewer can be on another computer, also on a slow link and behind NAT.
 
 Version 1 covers:
 
@@ -20,7 +18,7 @@ Version 1 does not cover:
 
 ## Why it exists
 
-Existing open-source tools get the screen from WebDriverAgent (WDA) screenshots or from the WDA MJPEG stream. That stream runs at 10 fps by default, and raw MJPEG needs 25–40 Mbit/s. The research of 2026-10-06 found no maintained tool that uses the USB screen-capture device of macOS (the QuickTime route). tapstream uses that device and encodes the screen with the hardware H.265 encoder. The prototype gets about 30 fps in less than 1 Mbit/s.
+Existing open-source tools get the screen from WebDriverAgent (WDA) screenshots or from the WDA MJPEG stream. That stream runs at 10 fps by default, and raw MJPEG needs 25–40 Mbit/s. The research of 2026-10-06 found no maintained tool that uses the USB screen-capture device of macOS (the QuickTime route). glasstap uses that device and encodes the screen with the hardware H.265 encoder. The prototype gets about 30 fps in less than 1 Mbit/s.
 
 The closest project is [iphone-use](https://github.com/leeguooooo/iphone-use) (MIT). It re-encodes WDA frames to H.264, so it keeps the WDA frame-rate limit. [GADS](https://github.com/shamanec/GADS) is a full device farm, but it has open bugs on iOS 26.4 and 26.5.
 
@@ -56,7 +54,7 @@ These facts are **not measured yet**:
 ```text
  iPhone ──USB──┐
                │
- ┌─────────────┴──────────── host Mac: tapstream.app (menu bar) ─┐
+ ┌─────────────┴──────────── host Mac: glasstap.app (menu bar) ──┐
  │  Device manager ── finds iPhones, matches capture ↔ UDID       │
  │  Capture + encoder ── CoreMediaIO → VideoToolbox H.265/H.264   │
  │  WDA manager ── builds, starts and watches WDA (v0.2)          │
@@ -132,13 +130,13 @@ A spike is a short test that decides the design. Do not start a milestone before
 
 ## Decisions
 
-The user must make these decisions before v0.1:
+Made on 2026-10-06:
 
-1. **Name.** `tapstream` is a working name. Check that it is free on GitHub and Homebrew.
-2. **Licence.** MIT, or Apache-2.0, which adds a patent grant.
-3. **Minimum macOS.** The prototype ran on macOS 26. macOS 14 is a possible floor.
-4. **GitHub owner.** A personal account or an organization.
-5. **JPEG fallback.** Keep it in v0.1, or drop it to keep the app small.
+1. **Name: glasstap.** No GitHub repo and no Homebrew package used it. The first working name, "tapstream", was a mobile marketing SDK, so it would confuse people in the same field.
+2. **Licence: MIT.** It is the simplest choice and the most common one for iOS developer tools. A patent grant (Apache-2.0) matters little for a tool of this size.
+3. **Minimum macOS: 14 (Sonoma).** It has the SwiftUI menu-bar API and every capture and encoder API that the prototype uses. Only macOS 26 is tested so far.
+4. **GitHub owner: necatisozer.** The repo stays private until the prototype no longer holds personal values (the `mac-mini` host and the `com.necatisozer` bundle id).
+5. **JPEG fallback: not in v0.1.** It needs `pymobiledevice3` and the WDA MJPEG stream, which v0.1 avoids. The code stays in `prototype/`.
 
 ## Prototype sources
 

@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# Xcode and Swift Package Manager
+build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+.swiftpm/
+.build/
+
+# Python
+__pycache__/
+*.pyc

@@ -30,7 +30,7 @@ JPEG="${PHONE_REMOTE_JPEG:-45}"     # JPEG quality of those frames, 1-100
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # WDA allows any origin and has no authentication. So its tunnel ends in a
 # Unix socket in a private folder, which no website and no other user can reach.
-LOCAL_DIR="$HOME/.tapstream"
+LOCAL_DIR="$HOME/.glasstap"
 SOCK="$LOCAL_DIR/wda.sock"
 wda_curl() { curl -s --unix-socket "$SOCK" "$@"; }
 # A new random token for each run. The page, the control server and the
@@ -64,7 +64,7 @@ cleanup() {
     done
     ssh "$HOST" "$cmd" 2>/dev/null
   fi
-  ssh "$HOST" 'rm -f ~/.tapstream/token' 2>/dev/null
+  ssh "$HOST" 'rm -f ~/.glasstap/token' 2>/dev/null
   rm -f "$SOCK" ${LAUNCHER:+"$LAUNCHER"}
 }
 trap cleanup EXIT
@@ -86,8 +86,8 @@ done
 echo "Starting WDA and the $MODE stream on $HOST…"
 # Keep the files in a private folder. In the shared /tmp, another user could
 # create the folder first and replace the source that this script builds and runs.
-ssh "$HOST" "mkdir -p -m 700 ~/.tapstream && chmod 700 ~/.tapstream && cat > ~/.tapstream/$SOURCE" < "$HERE/$SOURCE" || exit 1
-printf '%s' "$TOKEN" | ssh "$HOST" 'umask 077 && cat > ~/.tapstream/token' || exit 1
+ssh "$HOST" "mkdir -p -m 700 ~/.glasstap && chmod 700 ~/.glasstap && cat > ~/.glasstap/$SOURCE" < "$HERE/$SOURCE" || exit 1
+printf '%s' "$TOKEN" | ssh "$HOST" 'umask 077 && cat > ~/.glasstap/token' || exit 1
 OUT="$(ssh "$HOST" bash -s -- "$RUNNER" "$MODE" "$SCALE" "$FPS" "$WIDTH" "$JPEG" \
   "$CODEC" "$VWIDTH" "$BITRATE" "$VFPS" <<'EOF'
 RUNNER="$1"; MODE="$2"; SCALE="$3"; FPS="$4"; WIDTH="$5"; JPEG="$6"
@@ -95,7 +95,7 @@ CODEC="$7"; VWIDTH="$8"; BITRATE="$9"; VFPS="${10}"
 P=$(ls -d "$HOME"/Library/Python/*/bin/pymobiledevice3 2>/dev/null | head -1)
 [ -n "$P" ] || P=$(command -v pymobiledevice3)
 [ -n "$P" ] || { echo "error: pymobiledevice3 not found"; exit 1; }
-L="$HOME/.tapstream"
+L="$HOME/.glasstap"
 wda_up() { curl -s --max-time 3 -o /dev/null http://localhost:8100/status; }
 if ! wda_up; then
   if ! pgrep -f "usbmux forward 8100 8100" >/dev/null; then
@@ -249,7 +249,7 @@ fi
 # "not locked" then. If no frame comes and the lock or home screen is in
 # front, press Home: it wakes the lock screen and does nothing on the home screen.
 if [ "$MODE" = video ]; then
-  frame_seen() { ssh "$HOST" 'grep -q "encoder ready" ~/.tapstream/capture.log'; }
+  frame_seen() { ssh "$HOST" 'grep -q "encoder ready" ~/.glasstap/capture.log'; }
   for i in 1 2 3 4; do frame_seen && break; sleep 1; done
   if ! frame_seen; then
     SID=$(wda_curl --max-time 5 http://localhost/status | python3 -c 'import sys,json; print(json.load(sys.stdin).get("sessionId") or "")')
