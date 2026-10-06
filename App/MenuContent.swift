@@ -11,6 +11,7 @@ struct MenuContent: View {
             if case let .iPhone(deviceProblem) = problem { Text(deviceProblem.message) }
         }
         Text(captureLine)
+        if let adaptingLine { Text(adaptingLine) }
         Text(model.viewerConnected ? "Viewer connected" : "No viewer connected")
         Text(wdaLine)
         if model.showWakeHint {
@@ -74,6 +75,14 @@ struct MenuContent: View {
         case .running: "Capture: \(model.fps) fps"
         case let .failed(message): "Capture failed: \(message)"
         }
+    }
+
+    /// Shown only while adaptive bitrate holds the encoder below the settings.
+    private var adaptingLine: String? {
+        guard model.captureStatus == .running, let target = model.encoderTarget else { return nil }
+        let set = model.settings.encoder
+        guard target.bitrate != set.bitrate else { return nil }
+        return "Bitrate: \(target.bitrate / 1000) kbit/s (adapting)"
     }
 
     private var wdaLine: String {

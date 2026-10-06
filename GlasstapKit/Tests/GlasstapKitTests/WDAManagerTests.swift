@@ -7,6 +7,8 @@ import Testing
 final class ManualClock: WDAClock, @unchecked Sendable {
     private struct Sleeper {
         let id: UUID
+        /// The order of registration, from 1.
+        let serial: Int
         let deadline: Duration
         let continuation: CheckedContinuation<Void, any Error>
     }
@@ -15,20 +17,34 @@ final class ManualClock: WDAClock, @unchecked Sendable {
         var now: Duration = .zero
         var sleepers: [Sleeper] = []
         var cancelled: Set<UUID> = []
+        var registered = 0
+        var calls = 0
     }
 
     private let state = OSAllocatedUnfairLock(initialState: State())
 
     var now: Duration { state.withLock { $0.now } }
     var sleeperCount: Int { state.withLock { $0.sleepers.count } }
+    /// The sleepers registered so far, also those that have woken or were cancelled.
+    var registrations: Int { state.withLock { $0.registered } }
+    /// The calls of `sleep`, also those that a cancellation ended before they waited.
+    var sleepCalls: Int { state.withLock { $0.calls } }
+
+    /// True if a sleeper registered after `serial` waits, and `advance(by: duration)` would wake it.
+    func hasSleeper(registeredAfter serial: Int, dueWithin duration: Duration) -> Bool {
+        state.withLock { s in s.sleepers.contains { $0.serial > serial && $0.deadline <= s.now + duration } }
+    }
 
     func sleep(for duration: Duration) async throws {
         let id = UUID()
+        state.withLock { $0.calls += 1 }
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
                 let early: Result<Void, any Error>? = state.withLock { s in
                     if s.cancelled.remove(id) != nil { return .failure(CancellationError()) }
-                    s.sleepers.append(Sleeper(id: id, deadline: s.now + duration, continuation: continuation))
+                    s.registered += 1
+                    s.sleepers.append(Sleeper(id: id, serial: s.registered, deadline: s.now + duration,
+                                              continuation: continuation))
                     return nil
                 }
                 if let early { continuation.resume(with: early) }

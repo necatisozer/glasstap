@@ -157,6 +157,7 @@ kbd {
 <footer class="status">
   <span id="dot" class="dot"></span><b id="state">Connecting…</b>
   <span id="fps"></span>
+  <span id="rate"></span>
   <span id="fmt"></span>
   <span class="spacer"></span>
   <span id="action"></span>
@@ -297,13 +298,32 @@ document.addEventListener('keydown', e => {
 const sleep = ms => new Promise(f => setTimeout(f, ms));
 
 // Decode the stream with WebCodecs and draw each frame at once.
-// Messages: 4-byte length, 1 type byte (0 config, 1 key, 2 delta, 3 replaced), payload.
+// Messages: 4-byte length, 1 type byte (0 config, 1 key, 2 delta, 3 replaced, 4 stats), payload.
+// The server sends stats only when the URL asks with stats=1. Skip any type not known here.
+// Every 250 ms the page reports the bytes it has received, so that the host sees the stream
+// still on the way, also in buffers it cannot see itself, such as an SSH tunnel.
 async function video() {
   const ctx = img.getContext('2d');
   for (;;) {
-    let dec = null, replaced = false;
+    let dec = null, replaced = false, session = null, received = 0, reporting = false;
+    let lastReport = { received: -1, at: 0 };
+    const report = setInterval(async () => {
+      // A report that is still on the way is enough. Do not queue more behind it.
+      if (!session || reporting) return;
+      // Nothing new arrived: skip, but report at least every 900 ms. The host counts a report
+      // as fresh for 1 s.
+      const now = performance.now();
+      if (received === lastReport.received && now - lastReport.at < 900) return;
+      lastReport = { received, at: now };
+      reporting = true;
+      try {
+        // A report that takes longer than 1 s is stale anyway. The timeout also frees the next one.
+        await fetch('/stats', { method: 'POST', headers: auth, body: JSON.stringify({ session, received }),
+                                signal: AbortSignal.timeout(1000) });
+      } catch (e) {} finally { reporting = false; }
+    }, 250);
     try {
-      const r = await fetch(VIDEO + '?token=' + encodeURIComponent(TOKEN), { cache: 'no-store' });
+      const r = await fetch(VIDEO + '?token=' + encodeURIComponent(TOKEN) + '&stats=1', { cache: 'no-store' });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       // The iPhone may have changed since the last connection.
       refreshInfo();
@@ -312,6 +332,7 @@ async function video() {
       for (;;) {
         const { value, done } = await rd.read();
         if (done) throw new Error('stream ended');
+        received += value.length;
         // Copy only when a message was cut between two chunks. Otherwise read the chunk in place.
         if (off < buf.length) {
           const rest = buf.length - off, nb = new Uint8Array(rest + value.length);
@@ -324,8 +345,16 @@ async function video() {
           const type = buf[off + 4], payload = buf.subarray(off + 5, off + 4 + n);
           off += 4 + n;
           if (type === 3) { replaced = true; throw new Error('replaced'); }
+          if (type === 4) {
+            // The encoder target. It falls below the settings while the link is congested.
+            const st = JSON.parse(new TextDecoder().decode(payload));
+            $('rate').textContent = Math.round(st.bitrate / 1000) + ' kbit/s';
+            $('rate').title = 'Encoder target: ' + Math.round(st.bitrate / 1000) + ' kbit/s, ' + st.fps + ' fps';
+            continue;
+          }
           if (type === 0) {
             const cfg = JSON.parse(new TextDecoder().decode(payload));
+            session = cfg.session || null;
             const conf = { codec: cfg.codec, optimizeForLatency: true };
             if (!(await VideoDecoder.isConfigSupported(conf)).supported) throw new Error(cfg.codec + ' is not supported by this browser');
             if (dec) dec.close();
@@ -338,7 +367,7 @@ async function video() {
             img.width = cfg.width; img.height = cfg.height;
             $('fmt').textContent = (cfg.codec.startsWith('hev') ? 'H.265' : 'H.264') + ' · ' + cfg.width + '×' + cfg.height;
             status('live', 'Live');
-          } else if (dec && dec.state === 'configured') {
+          } else if ((type === 1 || type === 2) && dec && dec.state === 'configured') {
             // If decoding falls behind, drop delta frames until the next key frame.
             // Delta frames depend on the frames before them, so skip all of them.
             if (type === 1) skip = false;
@@ -348,9 +377,10 @@ async function video() {
         }
       }
     } catch (e) {
+      clearInterval(report);
       if (dec && dec.state !== 'closed') dec.close();
       // A newer viewer took the stream. Stop here, so the two pages do not take it back and forth.
-      if (replaced) { status('bad', 'Paused'); $('fps').textContent = ''; $('paused').style.display = 'flex'; return; }
+      if (replaced) { status('bad', 'Paused'); $('fps').textContent = ''; $('rate').textContent = ''; $('paused').style.display = 'flex'; return; }
       status('bad', 'Stream lost, retrying…');
       await sleep(1000);
     }

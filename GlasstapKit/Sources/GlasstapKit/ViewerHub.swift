@@ -8,15 +8,23 @@ public final class ViewerHub: @unchecked Sendable {
     private struct State {
         var viewers = ViewerState<ObjectIdentifier>()
         var connections: [ObjectIdentifier: NWConnection] = [:]
+        /// The encoder's target. Only the capture engine writes it.
+        var stats: StreamStats?
         var onKeyFrameWanted: (@Sendable () -> Void)?
+        var onJoin: (@Sendable () -> Void)?
     }
 
     private let state = OSAllocatedUnfairLock(uncheckedState: State())
     private let log = Logger(subsystem: "io.github.necatisozer.glasstap", category: "viewers")
+    private let epoch = ContinuousClock.now
+    private var now: Duration { ContinuousClock.now - epoch }
 
     public init() {}
 
     public var viewerCount: Int { state.withLock { $0.viewers.count } }
+
+    /// The encoder's target, as the viewers see it in stats messages.
+    public var stats: StreamStats? { state.withLock { $0.stats } }
 
     /// True while a viewer waits for a key frame. It stays true until a key frame goes out,
     /// so a frame that the encoder drops does not leave the viewer without a picture.
@@ -28,20 +36,57 @@ public final class ViewerHub: @unchecked Sendable {
         state.withLock { $0.onKeyFrameWanted = handler }
     }
 
+    /// Called after a viewer joins, before it gets any stats. Adaptive bitrate starts again from
+    /// the settings for each viewer, because a new viewer may have another link.
+    func setJoinHandler(_ handler: @escaping @Sendable () -> Void) {
+        state.withLock { $0.onJoin = handler }
+    }
+
     /// Makes `connection` the only viewer. Call it after the HTTP header is sent.
-    func join(_ connection: NWConnection) {
+    /// `stats` is true for a viewer that reads stats messages. Returns the session of the new stream.
+    @discardableResult
+    func join(_ connection: NWConnection, stats: Bool = false) -> String {
         let id = ObjectIdentifier(connection)
-        let (old, handler) = state.withLock { s -> ([NWConnection], (@Sendable () -> Void)?) in
-            let replaced = s.viewers.join(id)
+        // 32 random hex characters. The token guards the reports; the session only names the stream.
+        let session = AccessToken.generate().value
+        let (old, onJoin, onKeyFrameWanted) = state.withLock { s in
+            let replaced = s.viewers.join(id, stats: stats, session: session)
             s.connections[id] = connection
-            return (replaced.compactMap { s.connections.removeValue(forKey: $0) }, s.onKeyFrameWanted)
+            return (replaced.compactMap { s.connections.removeValue(forKey: $0) }, s.onJoin, s.onKeyFrameWanted)
         }
         // Tell the old viewer, so that it stops and does not take the stream back.
         for c in old {
             c.send(content: StreamMessage.encode(.replaced), completion: .contentProcessed { _ in c.cancel() })
         }
         log.info("viewer joined, \(old.count) replaced")
-        handler?()
+        onJoin?()
+        // The new viewer learns the target at once, not only at its next change.
+        if let current = state.withLock({ $0.stats }) { setStats(current) }
+        onKeyFrameWanted?()
+        return session
+    }
+
+    /// Stores the target and sends it to each viewer that reads stats and does not have it yet.
+    func setStats(_ stats: StreamStats) {
+        let now = self.now
+        let deliveries = state.withLock { s in
+            s.stats = stats
+            return s.viewers.stats(stats, at: now).compactMap { d in s.connections[d.id].map { ($0, d.message) } }
+        }
+        for (connection, message) in deliveries { send(message, on: connection) }
+    }
+
+    /// One measurement of the link, or nil when no viewer is connected.
+    func takeLinkSample() -> LinkSample? {
+        let now = self.now
+        return state.withLock { $0.viewers.takeSample(at: now) }
+    }
+
+    /// A viewer's report of the stream bytes that it has received. Returns false if `session`
+    /// is not a current stream, for example after another viewer took it.
+    func report(session: String, received: Int) -> Bool {
+        let now = self.now
+        return state.withLock { $0.viewers.report(session: session, received: received, at: now) }
     }
 
     func leave(_ connection: NWConnection) {
@@ -68,25 +113,30 @@ public final class ViewerHub: @unchecked Sendable {
 
     /// Sends one frame message to the viewer. Call it from one thread at a time, in frame order.
     public func broadcast(_ message: Data, key: Bool, config: StreamConfig?) {
+        let now = self.now
         let deliveries = state.withLock { s in
-            s.viewers.frame(message, key: key, config: config).compactMap { d in
+            s.viewers.frame(message, key: key, config: config, at: now).compactMap { d in
                 s.connections[d.id].map { (connection: $0, messages: d.messages) }
             }
         }
         for (connection, messages) in deliveries {
-            for message in messages {
-                connection.send(content: message, completion: .contentProcessed { [weak self] error in
-                    self?.sent(connection, error: error)
-                })
-            }
+            for message in messages { send(message, on: connection) }
         }
     }
 
+    /// Every send to a viewer goes through here, so that its completion reaches the viewer's backlog and send times.
+    private func send(_ message: Data, on connection: NWConnection) {
+        connection.send(content: message, completion: .contentProcessed { [weak self] error in
+            self?.sent(connection, error: error)
+        })
+    }
+
     private func sent(_ connection: NWConnection, error: NWError?) {
+        let now = self.now
         // The closure keeps the connection alive, so its identifier cannot belong to a newer one.
         let handler = state.withLock { s -> (@Sendable () -> Void)? in
             let wanted = s.viewers.wantKeyFrame
-            s.viewers.sent(ObjectIdentifier(connection))
+            s.viewers.sent(ObjectIdentifier(connection), at: now)
             return !wanted && s.viewers.wantKeyFrame ? s.onKeyFrameWanted : nil
         }
         handler?()

@@ -75,14 +75,55 @@ The window opens at the first launch, when a check starts to fail, and from **Se
 
 ## Adaptive bitrate
 
-The host measures congestion itself, with no change to the stream format:
+The viewer reports what it has received, and the host compares that with what it has sent. The host cannot see congestion by itself. Network.framework reports a send as done when the data enters its own buffer, which holds about 0.5 MB on loopback. Behind an SSH tunnel, sshd also reads into a channel window of about 2 MB. A slow link therefore stays hidden from the host until these buffers are full, which can take 20 s or more of delay.
 
-- For each viewer, the host knows how many messages are still waiting to be sent and how long the last sends took.
-- If more than 5 messages wait, or a send takes more than 300 ms, the host multiplies the bitrate by 0.7.
-- If the link is clear for 2 s, the host raises the bitrate by 10%, up to the bitrate in the settings.
-- The lowest bitrate is 150 kbit/s. Under it, the host halves the frame rate instead.
+**The stream.** The stream gains one optional message, type 4 (stats JSON with the current bitrate and frame rate). A viewer asks for it with `stats=1` in the video URL. Older pages do not ask, so they get the same stream as before. The config message (type 0) also names a `session`: a random id for this stream. See the stream format in the [v0.1 design](design-v0.1.md#stream-format).
 
-VideoToolbox accepts a new `AverageBitRate` on a running session, so a change needs no new key frame. The menu and the viewer status bar show the current bitrate.
+**The reports.** Every 250 ms, the viewer sends `POST /stats` to the control port with `{"session": …, "received": …}`. `received` is the number of bytes of the stream body that the viewer has received. If `received` did not change, the page skips the report, but it sends one at least every 900 ms. The request needs the token in the `X-Glasstap` header, with the same checks as the other actions. A report with another session gets 404 and changes nothing. The control port keeps a connection open between requests, so that a report does not open a new connection each time. Through `ssh -L`, a new connection costs a new SSH channel and a round trip.
+
+**In flight and the queue.** The host counts the bytes that it hands to the connection after the HTTP header. "In flight" is the bytes sent less the bytes received, at the time of the report. Part of it is the path itself: about two round trips of stream, because a report is one round trip old when it arrives. The host takes the lowest amount in flight of the last 10 s as the baseline of the path. The baseline can rise again after 10 s, for example when the viewer moves to another network. Only the amount above the baseline is the queue.
+
+**Room for a key frame.** A key frame goes out at once and is many times the size of a delta frame. At 75 kbit/s, one key frame is more than 1 s of the bitrate. So each threshold below adds the largest key frame of the last 10 s ("K"). "1 s" means the bytes of 1 s at the current target bitrate.
+
+The host measures every 250 ms while a viewer is connected. It stops when no frame went out since the last measurement and the bitrate and size are at the settings, because then it has nothing to measure or to raise.
+
+The rules:
+
+- **Congested:** the queue is more than K + 1 s (at least 64 KB). Or the amount in flight grew in the last 1 s by more than 0.15 s (at least 16 KB), and the queue is more than K + 0.5 s (at least 32 KB). The host then multiplies the bitrate by 0.7.
+- **Draining:** if the amount in flight fell in the last 1 s, the host does not cut, because the queue drains by itself. Another cut would go below what the link carries.
+- **Clear:** the queue is less than K + 0.25 s (at least 16 KB). If the link is clear for 2 s, the host raises the bitrate by 10%, up to the bitrate in the settings. Between clear and congested, the bitrate stays.
+- **No feedback:** if the last report is older than 1 s, or the viewer never reports (a page from before v0.2), the host uses its own signal. If more than 5 messages wait, or a send takes more than 300 ms, the link is congested. Otherwise it is clear.
+- After a decrease, the host waits 1 s before the next one, so that one burst does not cut the bitrate several times.
+- Each size of the stream has a lowest bitrate (a floor). At the floor, the host makes the picture smaller instead, and cuts the bitrate by 0.7 again, down to the next floor. The frame rate stays at the settings.
+- When the link is clear and the bitrate has reached the floor of the larger size, the host makes the picture larger again. Before that, it raises the bitrate.
+- With no viewer, when a new viewer joins, and when the capture stops, the bitrate and the frame rate go back to the settings. A new viewer may have another link.
+
+**The size ladder.** Under a floor, VideoToolbox does not lower the stream: it drops most frames. The host measured this with the real encoder, on a page of text that scrolls at 30 fps, for 8 s:
+
+| Width | 300 kbit/s | 250 | 200 | 150 | 125 | 100 | 75 |
+|---|---|---|---|---|---|---|---|
+| 590 px | 183 of 240 frames | 206 | 12 | 8 |  | 8 | 8 |
+| 392 px | 240 |  |  | 240 | 101 | 20 | 11 |
+| 294 px | 240 |  |  | 240 |  | 114 | 20 |
+| 294 px, a key frame every 4 s |  |  |  | 240 |  | 240 | 136 |
+
+The ladder keeps at least about half of the frames at each floor:
+
+| Size | Width at 590 px in the settings | Floor | Key frame |
+|---|---|---|---|
+| Full | 590 px | 250 kbit/s | every 2 s |
+| About 2/3 | 392 px | 150 kbit/s | every 2 s |
+| About 1/2 | 294 px | 75 kbit/s | every 4 s |
+
+For another width in the settings, the floors change with the area of the picture. All sizes are even, and the height keeps the aspect ratio of the screen.
+
+**A size change.** The capture queue makes a new encoder session for the new size, with no restart of the capture. The capture output scales its frames to the new size, and frames of the old size that are still on the way are scaled on the Mac. The first frame of the new session is a key frame with a new config message, so the viewer makes a new decoder.
+
+**The encoder.** The host changes only `AverageBitRate` on a running session. `ExpectedFrameRate` stays at the settings. A lower value makes VideoToolbox spend more bits on each frame, and the stream then grows: 245 kbit/s at 5 fps against 185 kbit/s at 30 fps, for a target of 150 kbit/s. `DataRateLimits` is not available on this encoder.
+
+**A dropped key frame.** At a low bitrate, the encoder can drop a key frame that a viewer waits for. The host then tries again after 250 ms, 500 ms, 1 s, and then every 2 s, until a key frame comes out. It logs the first drop only. Without the wait, it would try again at once and drop the frame again, at the frame rate.
+
+VideoToolbox accepts a new `AverageBitRate` on a running session, so a change needs no new key frame. The menu and the viewer status bar show the current bitrate. The viewer status bar takes it from the stats messages.
 
 ## Listen address
 

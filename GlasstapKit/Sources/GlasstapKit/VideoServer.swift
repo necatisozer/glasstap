@@ -57,7 +57,7 @@ public final class VideoServer: @unchecked Sendable {
             if let corsOrigin { headers += [("Access-Control-Allow-Origin", corsOrigin), ("Vary", "Origin")] }
             let header = HTTPResponse(status: 200, headers: headers).header(contentLength: nil)
             connection.send(content: header, completion: .contentProcessed { _ in })
-            hub.join(connection)
+            hub.join(connection, stats: request.queryValue("stats") == "1")
             watchForClose(connection)
         }
     }

@@ -97,8 +97,12 @@ enum Listener {
         }
     }
 
-    /// Sends the response and closes the connection.
-    static func respond(_ connection: NWConnection, _ response: HTTPResponse) {
-        connection.send(content: response.serialized, completion: .contentProcessed { _ in connection.cancel() })
+    /// Sends the response. Without `next`, it then closes the connection. With it, the connection
+    /// stays open, and `next` reads the next request.
+    static func respond(_ connection: NWConnection, _ response: HTTPResponse,
+                        keepAlive next: (@Sendable () -> Void)? = nil) {
+        connection.send(content: response.serialized(keepAlive: next != nil), completion: .contentProcessed { error in
+            if let next, error == nil { next() } else { connection.cancel() }
+        })
     }
 }

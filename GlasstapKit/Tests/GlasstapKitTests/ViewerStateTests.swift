@@ -170,6 +170,48 @@ import Testing
         }
     }
 
+    @Test func theConfigCarriesTheViewersSession() throws {
+        var s = ViewerState<Int>()
+        _ = s.join(1, session: "abc")
+        let out = s.frame(key, key: true, config: config)
+        let sent = try JSONDecoder().decode(StreamConfig.self, from: Data(out[0].messages[0].dropFirst(5)))
+        #expect(sent == StreamConfig(codec: config.codec, width: config.width, height: config.height, session: "abc"))
+        // The session is not a change of the stream: the next key frame needs no new config.
+        let next = s.frame(key, key: true, config: config)
+        #expect(types(next[0].messages) == [1])
+    }
+
+    @Test func statsGoOnlyToAViewerThatAsks() {
+        var s = ViewerState<Int>()
+        _ = s.join(1)
+        let stats = StreamStats(bitrate: 620_000, fps: 30)
+        let targets = s.stats(stats)
+        #expect(targets.isEmpty)
+        #expect(s.backlog == 0)
+        _ = s.join(2, stats: true)
+        let targets2 = s.stats(stats)
+        #expect(targets2.map(\.id) == [2])
+        // The same value again goes to nobody.
+        let targets3 = s.stats(stats)
+        #expect(targets3.isEmpty)
+        // A stats message waits like a frame, so it counts in the backlog.
+        #expect(s.backlog == 1)
+        _ = s.frame(key, key: true, config: config)
+        #expect(s.backlog == 3)
+        s.sent(2)
+        #expect(s.backlog == 2)
+    }
+
+    @Test func aViewerFarBehindStillGetsStats() {
+        var s = ViewerState<Int>()
+        _ = s.join(1, stats: true)
+        _ = s.frame(key, key: true, config: config)
+        for _ in 0..<20 { _ = s.frame(delta, key: false) }
+        #expect(s.backlog > ViewerState<Int>.maxPending)
+        let targets = s.stats(StreamStats(bitrate: 620_000, fps: 30))
+        #expect(targets.map(\.id) == [1])
+    }
+
     @Test func leave() {
         var s = ViewerState<Int>()
         _ = s.join(1)
