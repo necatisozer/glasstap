@@ -25,29 +25,43 @@ public actor WDAClient {
         public let description: String
     }
 
-    private var baseURL: URL
-    private var session: (id: String, size: ScreenSize)?
-    private let urlSession: URLSession
-
-    public init(baseURL: URL) {
-        self.baseURL = baseURL
+    /// The one session for requests to WDA. WDA is on the iPhone's tunnel address, which no proxy can reach.
+    static let urlSession: URLSession = {
         let config = URLSessionConfiguration.ephemeral
         config.connectionProxyDictionary = [:]
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
-        urlSession = URLSession(configuration: config)
+        return URLSession(configuration: config)
+    }()
+
+    /// The WDA base URL now, or nil while no WDA runs. It changes when WDA starts again.
+    private let endpoint: @Sendable () -> URL?
+    /// A WDA session belongs to the WDA at one address.
+    private var session: (url: URL, id: String, size: ScreenSize)?
+
+    public init(endpoint: @escaping @Sendable () -> URL?) {
+        self.endpoint = endpoint
     }
 
-    public func setBaseURL(_ url: URL) {
-        baseURL = url
-        session = nil
+    public init(baseURL: URL?) {
+        self.init(endpoint: { baseURL })
+    }
+
+    /// True if `GET /status` answers 200 with a JSON object within 3 s.
+    public static func isReachable(_ baseURL: URL) async -> Bool {
+        let request = URLRequest(url: baseURL.appending(path: WDARequest.status.path), timeoutInterval: 3)
+        guard let (data, response) = try? await urlSession.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200
+        else { return false }
+        return (try? JSONSerialization.jsonObject(with: data)) is [String: Any]
     }
 
     private func call(_ wda: WDARequest, timeout: TimeInterval = 30) async throws -> [String: Any] {
+        guard let baseURL = endpoint() else { throw ReplyError(description: "WDA is not running") }
         var request = URLRequest(url: baseURL.appending(path: wda.path), timeoutInterval: timeout)
         request.httpMethod = wda.method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = wda.body
-        let (data, response) = try await urlSession.data(for: request)
+        let (data, response) = try await Self.urlSession.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status >= 400 {
             throw WDAError(status: status, body: String(decoding: data, as: UTF8.self))
@@ -60,7 +74,8 @@ public actor WDAClient {
 
     /// Reuses the cached session, or the one that WDA reports, or creates one. Also fetches the window size.
     private func currentSession() async throws -> (id: String, size: ScreenSize) {
-        if let session { return session }
+        guard let url = endpoint() else { throw ReplyError(description: "WDA is not running") }
+        if let session, session.url == url { return (session.id, session.size) }
         var id = try await call(.status)["sessionId"] as? String
         if id == nil { id = try await call(.createSession)["sessionId"] as? String }
         guard let id else { throw ReplyError(description: "WDA gave no session id") }
@@ -70,9 +85,9 @@ public actor WDAClient {
               (1..<100_000).contains(w), (1..<100_000).contains(h) else {
             throw ReplyError(description: "WDA gave no window size")
         }
-        let new = (id, ScreenSize(width: w, height: h))
-        session = new
-        return new
+        let size = ScreenSize(width: w, height: h)
+        session = (url, id, size)
+        return (id, size)
     }
 
     /// Runs `body` in the cached session. If WDA no longer knows that session, gets a fresh one and tries once more.
@@ -106,10 +121,6 @@ public actor WDAClient {
               let png = Data(base64Encoded: base64, options: .ignoreUnknownCharacters)
         else { throw ReplyError(description: "WDA gave no screenshot") }
         return png
-    }
-
-    public func isReachable() async -> Bool {
-        (try? await call(.status, timeout: 3)) != nil
     }
 
     /// The capture sends no frames while the display is off. On the lock or home

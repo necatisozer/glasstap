@@ -34,20 +34,50 @@ public struct GlasstapSettings: Sendable, Equatable, Codable {
     public var encoder: EncoderSettings
     public var controlPort: UInt16
     public var videoPort: UInt16
-    public var wdaURL: URL
+    /// The Apple team that signs WDA. Empty until the user sets it.
+    public var teamID: String
+    /// The WDA runner's bundle id without ".xctrunner". Empty means the default for the team.
+    public var wdaBundlePrefix: String
+    /// A WDA that the user runs. nil means that glasstap builds and starts WDA itself.
+    public var wdaURLOverride: URL?
 
-    public init(encoder: EncoderSettings, controlPort: UInt16, videoPort: UInt16, wdaURL: URL) {
+    public init(encoder: EncoderSettings, controlPort: UInt16, videoPort: UInt16,
+                teamID: String = "", wdaBundlePrefix: String = "", wdaURLOverride: URL? = nil) {
         self.encoder = encoder
         self.controlPort = controlPort
         self.videoPort = videoPort
-        self.wdaURL = wdaURL
+        self.teamID = teamID
+        self.wdaBundlePrefix = wdaBundlePrefix
+        self.wdaURLOverride = wdaURLOverride
     }
 
     public static let defaults = GlasstapSettings(
         encoder: EncoderSettings(codec: .hevc, width: 590, bitrate: 800_000, fps: 30),
         controlPort: 9300,
-        videoPort: 9301,
-        wdaURL: URL(string: "http://127.0.0.1:8100")!)
+        videoPort: 9301)
+
+    /// The signing for WDA, once a team is set.
+    public var wdaSigning: WDASigning? {
+        guard !teamID.isEmpty else { return nil }
+        return WDASigning(teamID: teamID, bundlePrefix: wdaBundlePrefix.isEmpty
+            ? WDASigning.defaultBundlePrefix(teamID: teamID) : wdaBundlePrefix)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case encoder, controlPort, videoPort, teamID, wdaBundlePrefix, wdaURLOverride
+    }
+
+    /// Settings saved by an older version lack the newer keys, and keep their other values.
+    /// The old `wdaURL` key pointed at a forwarder that glasstap no longer uses, so it is not read.
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        encoder = try c.decode(EncoderSettings.self, forKey: .encoder)
+        controlPort = try c.decode(UInt16.self, forKey: .controlPort)
+        videoPort = try c.decode(UInt16.self, forKey: .videoPort)
+        teamID = try c.decodeIfPresent(String.self, forKey: .teamID) ?? ""
+        wdaBundlePrefix = try c.decodeIfPresent(String.self, forKey: .wdaBundlePrefix) ?? ""
+        wdaURLOverride = try c.decodeIfPresent(URL.self, forKey: .wdaURLOverride)
+    }
 }
 
 /// The settings as the user types them, in the units of the settings window.
@@ -58,6 +88,9 @@ public struct SettingsInput: Sendable, Equatable {
     public var fps: Int
     public var controlPort: Int
     public var videoPort: Int
+    public var teamID: String
+    public var wdaBundlePrefix: String
+    /// Empty for automatic.
     public var wdaURL: String
 
     static let widthRange = 160...2000
@@ -72,7 +105,9 @@ public struct SettingsInput: Sendable, Equatable {
         fps = s.encoder.fps
         controlPort = Int(s.controlPort)
         videoPort = Int(s.videoPort)
-        wdaURL = s.wdaURL.absoluteString
+        teamID = s.teamID
+        wdaBundlePrefix = s.wdaBundlePrefix
+        wdaURL = s.wdaURLOverride?.absoluteString ?? ""
     }
 
     /// The settings, or a message that says what to correct.
@@ -93,12 +128,27 @@ public struct SettingsInput: Sendable, Equatable {
             return problem("A port must be \(r.portRange.lowerBound)–\(r.portRange.upperBound).")
         }
         guard controlPort != videoPort else { return problem("The two ports must differ.") }
-        guard let url = URL(string: wdaURL.trimmingCharacters(in: .whitespaces)),
-              let scheme = url.scheme, ["http", "https"].contains(scheme), url.host != nil
-        else { return problem("The WDA URL must be an http URL, such as http://127.0.0.1:8100.") }
+        // Team and prefix go into an xcconfig file and a folder name, so only these characters pass.
+        let team = teamID.trimmingCharacters(in: .whitespaces).uppercased()
+        guard team.isEmpty || team.wholeMatch(of: /[A-Z0-9]{10}/) != nil else {
+            return problem("The team id has 10 letters and digits, such as ABCDE12345.")
+        }
+        let prefix = wdaBundlePrefix.trimmingCharacters(in: .whitespaces)
+        guard prefix.isEmpty || prefix.wholeMatch(of: /[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*/) != nil else {
+            return problem("The bundle id prefix may hold only letters, digits, \"-\" and \".\", such as com.example.wda.")
+        }
+        let override = wdaURL.trimmingCharacters(in: .whitespaces)
+        var url: URL?
+        if !override.isEmpty {
+            guard let parsed = URL(string: override), let scheme = parsed.scheme, ["http", "https"].contains(scheme),
+                  parsed.host != nil
+            else { return problem("The WDA URL must be empty or an http URL, such as http://127.0.0.1:8100.") }
+            url = parsed
+        }
         return .success(GlasstapSettings(
             encoder: EncoderSettings(codec: codec, width: width, bitrate: bitrateKbps * 1000, fps: fps),
-            controlPort: UInt16(controlPort), videoPort: UInt16(videoPort), wdaURL: url))
+            controlPort: UInt16(controlPort), videoPort: UInt16(videoPort),
+            teamID: team, wdaBundlePrefix: prefix, wdaURLOverride: url))
     }
 }
 

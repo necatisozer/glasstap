@@ -9,6 +9,6 @@ let package = Package(
     ],
     targets: [
         .target(name: "GlasstapKit"),
-        .testTarget(name: "GlasstapKitTests", dependencies: ["GlasstapKit"]),
+        .testTarget(name: "GlasstapKitTests", dependencies: ["GlasstapKit"], resources: [.copy("Fixtures")]),
     ]
 )

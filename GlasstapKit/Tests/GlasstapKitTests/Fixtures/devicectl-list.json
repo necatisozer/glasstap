@@ -1,0 +1,895 @@
+{
+  "info": {
+    "arguments": [
+      "devicectl",
+      "list",
+      "devices",
+      "--json-output",
+      "/tmp/devicectl.json"
+    ],
+    "commandType": "devicectl.list.devices",
+    "environment": {},
+    "jsonVersion": 5,
+    "outcome": "success",
+    "version": "642.16"
+  },
+  "result": {
+    "devices": [
+      {
+        "_deprecationNotice": {
+          "deprecatedFields": [
+            "hardwareProperties",
+            "deviceProperties",
+            "connectionProperties"
+          ],
+          "message": "The 'hardwareProperties', 'deviceProperties', 'connectionProperties' fields are deprecated and will be removed in a future release. Use the 'properties' dictionary instead.",
+          "replacement": "properties"
+        },
+        "connectionProperties": {
+          "authenticationType": "manualPairing",
+          "isMobileDeviceOnly": false,
+          "lastConnectionDate": "2026-10-06T13:18:00.000Z",
+          "localHostnames": [
+            "Test-iPhone-12-Pro.coredevice.local",
+            "11111111-2222-5333-8444-555555555555.coredevice.local",
+            "00008101-000A1B2C3D4E5F60.coredevice.local"
+          ],
+          "pairingState": "paired",
+          "potentialHostnames": [
+            "Test-iPhone-12-Pro.coredevice.local",
+            "11111111-2222-5333-8444-555555555555.coredevice.local",
+            "00008101-000A1B2C3D4E5F60.coredevice.local"
+          ],
+          "transportType": "wired",
+          "tunnelIPAddress": "fd00:3333:4444::1",
+          "tunnelState": "connected",
+          "tunnelTransportProtocol": "tcp"
+        },
+        "deviceProperties": {
+          "bootState": "booted",
+          "bootedFromSnapshot": true,
+          "bootedSnapshotName": "com.apple.os.update-0EAA0C08366E211502996BFB5CE48855904691C0E958C22BF9DC668F0184F9B7",
+          "ddiServicesAvailable": true,
+          "developerModeStatus": "enabled",
+          "hasInternalOSBuild": false,
+          "name": "Test iPhone 12 Pro",
+          "osBuildUpdate": "23F77",
+          "osVersionNumber": "26.5",
+          "rootFileSystemIsWritable": false,
+          "screenViewingURL": "devices://device/open?id=11111111-2222-5333-8444-555555555555",
+          "supportsCheckedAllocations": false
+        },
+        "hardwareProperties": {
+          "cpuType": {
+            "name": "arm64e",
+            "subType": -2147483646,
+            "type": 16777228
+          },
+          "deviceType": "iPhone",
+          "ecid": 1234567890123456,
+          "hardwareModel": "D53pAP",
+          "internalStorageCapacity": 256000000000,
+          "isProductionFused": true,
+          "marketingName": "iPhone 12 Pro",
+          "platform": "iOS",
+          "productType": "iPhone13,3",
+          "reality": "physical",
+          "serialNumber": "AAAA11112222",
+          "supportedCPUTypes": [
+            {
+              "name": "arm64e",
+              "subType": -2147483646,
+              "type": 16777228
+            },
+            {
+              "name": "arm64",
+              "subType": 0,
+              "type": 16777228
+            }
+          ],
+          "supportedDeviceFamilies": [
+            1
+          ],
+          "thinningProductType": "iPhone13,3",
+          "udid": "00008101-000A1B2C3D4E5F60"
+        },
+        "identifier": "11111111-2222-5333-8444-555555555555",
+        "properties": {
+          "connection": {
+            "authenticationType": "manualPairing",
+            "lastConnectionDate": 812985480,
+            "pairingState": "paired",
+            "screenViewingURL": {
+              "relative": "devices://device/open?id=11111111-2222-5333-8444-555555555555"
+            },
+            "state": "connected",
+            "transportType": "wired",
+            "tunnelIPAddressString": "fd00:3333:4444::1",
+            "tunnelTransportProtocol": "tcp"
+          },
+          "hardware": {
+            "cpuCount": {
+              "logicalCores": 6,
+              "packages": 1,
+              "physicalCores": 6
+            },
+            "cpuType": {
+              "subtype": 18446744071562067970,
+              "type": 16777228
+            },
+            "deviceType": "iPhone",
+            "ecid": 1234567890123456,
+            "hasActionButton": false,
+            "internalStorageCapacity": 256000000000,
+            "marketingName": "iPhone 12 Pro",
+            "platform": "iOS",
+            "productType": "iPhone13,3",
+            "reality": "physical",
+            "serialNumber": "AAAA11112222",
+            "supportedBiometrics": [
+              "faceID"
+            ],
+            "supportedCPUTypes": [
+              {
+                "subtype": 18446744071562067970,
+                "type": 16777228
+              },
+              {
+                "subtype": 0,
+                "type": 16777228
+              }
+            ],
+            "supportedDeviceFamilies": [
+              1
+            ],
+            "supportsSiri": true,
+            "thinningProductType": "iPhone13,3",
+            "udid": "00008101-000A1B2C3D4E5F60"
+          },
+          "software": {
+            "osBuildVersions": {
+              "buildVersion": {
+                "majorLetterComponent": "F",
+                "majorNumberComponent": 23,
+                "name": "23F77",
+                "revisionVersion": {
+                  "components": [
+                    23,
+                    6,
+                    77,
+                    0,
+                    0
+                  ],
+                  "originalComponentsCount": 5,
+                  "stringValue": "23.6.77.0.0"
+                },
+                "trainProgram": "iOS",
+                "updateNumberComponent": 77
+              },
+              "supplementalBuildVersion": {
+                "majorLetterComponent": "F",
+                "majorNumberComponent": 23,
+                "name": "23F77",
+                "revisionVersion": {
+                  "components": [
+                    23,
+                    6,
+                    77,
+                    0,
+                    0
+                  ],
+                  "originalComponentsCount": 5,
+                  "stringValue": "23.6.77.0.0"
+                },
+                "trainProgram": "iOS",
+                "updateNumberComponent": 77
+              }
+            },
+            "osVersionNumber": {
+              "components": [
+                26,
+                5,
+                0,
+                0,
+                0
+              ],
+              "originalComponentsCount": 2,
+              "stringValue": "26.5"
+            },
+            "supportsCheckedAllocations": false
+          },
+          "state": {
+            "bootState": "booted",
+            "developerModeStatus": {
+              "enabled": {
+                "mode": 1
+              }
+            },
+            "name": "Test iPhone 12 Pro",
+            "preparednessState": 7
+          }
+        },
+        "propertyDisplayNames": null,
+        "visibilityClass": "default"
+      },
+      {
+        "_deprecationNotice": {
+          "deprecatedFields": [
+            "hardwareProperties",
+            "deviceProperties",
+            "connectionProperties"
+          ],
+          "message": "The 'hardwareProperties', 'deviceProperties', 'connectionProperties' fields are deprecated and will be removed in a future release. Use the 'properties' dictionary instead.",
+          "replacement": "properties"
+        },
+        "connectionProperties": {
+          "authenticationType": "manualPairing",
+          "isMobileDeviceOnly": false,
+          "lastConnectionDate": "2026-10-02T23:26:00.000Z",
+          "pairingState": "paired",
+          "potentialHostnames": [
+            "Someones-iPhone.coredevice.local",
+            "66666666-7777-5888-9999-AAAAAAAAAAAA.coredevice.local",
+            "00008110-0001A2B3C4D5E6F7.coredevice.local"
+          ],
+          "transportType": "localNetwork",
+          "tunnelState": "disconnected",
+          "tunnelTransportProtocol": "tcp"
+        },
+        "deviceProperties": {
+          "bootState": "booted",
+          "bootedFromSnapshot": true,
+          "bootedSnapshotName": "com.apple.os.update-5552F8B66719734143A368F74584E3BF0781AE5F426186D724820961CDF09FA9",
+          "ddiServicesAvailable": false,
+          "developerModeStatus": "enabled",
+          "hasInternalOSBuild": false,
+          "name": "Someone’s iPhone",
+          "osBuildUpdate": "23G90",
+          "osVersionNumber": "26.6.2",
+          "rootFileSystemIsWritable": false,
+          "supportsCheckedAllocations": false
+        },
+        "hardwareProperties": {
+          "cpuType": {
+            "name": "arm64e",
+            "subType": -2147483646,
+            "type": 16777228
+          },
+          "deviceType": "iPhone",
+          "ecid": 6543210987654321,
+          "hardwareModel": "D63AP",
+          "internalStorageCapacity": 256000000000,
+          "isProductionFused": true,
+          "marketingName": "iPhone 13 Pro",
+          "platform": "iOS",
+          "productType": "iPhone14,2",
+          "reality": "physical",
+          "serialNumber": "BBBB333344",
+          "supportedCPUTypes": [
+            {
+              "name": "arm64e",
+              "subType": -2147483646,
+              "type": 16777228
+            },
+            {
+              "name": "arm64",
+              "subType": 0,
+              "type": 16777228
+            }
+          ],
+          "supportedDeviceFamilies": [
+            1
+          ],
+          "thinningProductType": "iPhone14,2",
+          "udid": "00008110-0001A2B3C4D5E6F7"
+        },
+        "identifier": "66666666-7777-5888-9999-AAAAAAAAAAAA",
+        "properties": {
+          "connection": {
+            "authenticationType": "manualPairing",
+            "lastConnectionDate": 812676360,
+            "pairingState": "paired",
+            "state": "disconnected",
+            "transportType": "localNetwork",
+            "tunnelTransportProtocol": "tcp"
+          },
+          "hardware": {
+            "cpuCount": {
+              "logicalCores": 6,
+              "packages": 1,
+              "physicalCores": 6
+            },
+            "cpuType": {
+              "subtype": 18446744071562067970,
+              "type": 16777228
+            },
+            "deviceType": "iPhone",
+            "ecid": 6543210987654321,
+            "hasActionButton": false,
+            "internalStorageCapacity": 256000000000,
+            "marketingName": "iPhone 13 Pro",
+            "platform": "iOS",
+            "productType": "iPhone14,2",
+            "reality": "physical",
+            "serialNumber": "BBBB333344",
+            "supportedBiometrics": [
+              "faceID"
+            ],
+            "supportedCPUTypes": [
+              {
+                "subtype": 18446744071562067970,
+                "type": 16777228
+              },
+              {
+                "subtype": 0,
+                "type": 16777228
+              }
+            ],
+            "supportedDeviceFamilies": [
+              1
+            ],
+            "supportsSiri": true,
+            "thinningProductType": "iPhone14,2",
+            "udid": "00008110-0001A2B3C4D5E6F7"
+          },
+          "software": {
+            "osBuildVersions": {
+              "buildVersion": {
+                "majorLetterComponent": "G",
+                "majorNumberComponent": 23,
+                "name": "23G90",
+                "revisionVersion": {
+                  "components": [
+                    23,
+                    7,
+                    90,
+                    0,
+                    0
+                  ],
+                  "originalComponentsCount": 5,
+                  "stringValue": "23.7.90.0.0"
+                },
+                "trainProgram": "iOS",
+                "updateNumberComponent": 90
+              },
+              "supplementalBuildVersion": {
+                "majorLetterComponent": "G",
+                "majorNumberComponent": 23,
+                "name": "23G90",
+                "revisionVersion": {
+                  "components": [
+                    23,
+                    7,
+                    90,
+                    0,
+                    0
+                  ],
+                  "originalComponentsCount": 5,
+                  "stringValue": "23.7.90.0.0"
+                },
+                "trainProgram": "iOS",
+                "updateNumberComponent": 90
+              }
+            },
+            "osVersionNumber": {
+              "components": [
+                26,
+                6,
+                2,
+                0,
+                0
+              ],
+              "originalComponentsCount": 3,
+              "stringValue": "26.6.2"
+            },
+            "supportsCheckedAllocations": false
+          },
+          "state": {
+            "bootState": "booted",
+            "developerModeStatus": {
+              "enabled": {
+                "mode": 1
+              }
+            },
+            "name": "Someone’s iPhone"
+          }
+        },
+        "propertyDisplayNames": null,
+        "visibilityClass": "default"
+      },
+      {
+        "_deprecationNotice": {
+          "deprecatedFields": [
+            "hardwareProperties",
+            "deviceProperties",
+            "connectionProperties"
+          ],
+          "message": "The 'hardwareProperties', 'deviceProperties', 'connectionProperties' fields are deprecated and will be removed in a future release. Use the 'properties' dictionary instead.",
+          "replacement": "properties"
+        },
+        "connectionProperties": {
+          "authenticationType": "implicit",
+          "isMobileDeviceOnly": false,
+          "lastConnectionDate": "2026-05-04T04:36:36.000Z",
+          "pairingState": "paired",
+          "potentialHostnames": [],
+          "transportType": "sameMachine",
+          "tunnelState": "disconnected"
+        },
+        "deviceProperties": {
+          "bootState": "shutdown",
+          "ddiServicesAvailable": false,
+          "hasInternalOSBuild": false,
+          "name": "iPhone 16 Pro Max (Test)",
+          "osBuildUpdate": "23E254a",
+          "osVersionNumber": "26.4.1",
+          "provider": "com.apple.CoreSimulator.SimulatorCoreDevicePlugin"
+        },
+        "hardwareProperties": {
+          "cpuType": {
+            "name": "arm64",
+            "subType": 0,
+            "type": 16777228
+          },
+          "deviceType": "iPhone",
+          "hardwareModel": "D94",
+          "marketingName": "iPhone 16 Pro Max",
+          "platform": "iOS",
+          "productType": "iPhone17,2",
+          "reality": "simulated",
+          "supportedCPUTypes": [
+            {
+              "name": "arm64",
+              "subType": 0,
+              "type": 16777228
+            }
+          ],
+          "udid": "0B0B0B0B-0000-4000-8000-000000000001"
+        },
+        "identifier": "0B0B0B0B-0000-4000-8000-000000000001",
+        "properties": {
+          "connection": {
+            "authenticationType": "implicit",
+            "lastConnectionDate": 799562196,
+            "pairingState": "paired",
+            "state": "disconnected",
+            "transportType": "sameMachine"
+          },
+          "hardware": {
+            "cpuType": {
+              "subtype": 0,
+              "type": 16777228
+            },
+            "deviceType": "iPhone",
+            "hasActionButton": true,
+            "marketingName": "iPhone 16 Pro Max",
+            "platform": "iOS",
+            "productType": "iPhone17,2",
+            "reality": "simulated",
+            "supportedBiometrics": [
+              "faceID"
+            ],
+            "supportedCPUTypes": [
+              {
+                "subtype": 0,
+                "type": 16777228
+              }
+            ],
+            "supportsSiri": true,
+            "udid": "0B0B0B0B-0000-4000-8000-000000000001"
+          },
+          "software": {
+            "osBuildVersions": {
+              "buildVersion": {
+                "majorLetterComponent": "E",
+                "majorNumberComponent": 23,
+                "name": "23E254a",
+                "revisionVersion": {
+                  "components": [
+                    23,
+                    5,
+                    254,
+                    0,
+                    1
+                  ],
+                  "originalComponentsCount": 5,
+                  "stringValue": "23.5.254.0.1"
+                },
+                "updateLetterComponent": "a",
+                "updateNumberComponent": 254
+              }
+            },
+            "osVersionNumber": {
+              "components": [
+                26,
+                4,
+                1,
+                0,
+                0
+              ],
+              "originalComponentsCount": 3,
+              "stringValue": "26.4.1"
+            }
+          },
+          "state": {
+            "bootState": "shutdown",
+            "name": "iPhone 16 Pro Max (Test)",
+            "preparednessState": 0,
+            "visibilityClass": "simulators"
+          }
+        },
+        "propertyDisplayNames": null,
+        "visibilityClass": "simulators"
+      },
+      {
+        "_deprecationNotice": {
+          "deprecatedFields": [
+            "hardwareProperties",
+            "deviceProperties",
+            "connectionProperties"
+          ],
+          "message": "The 'hardwareProperties', 'deviceProperties', 'connectionProperties' fields are deprecated and will be removed in a future release. Use the 'properties' dictionary instead.",
+          "replacement": "properties"
+        },
+        "connectionProperties": {
+          "authenticationType": "implicit",
+          "isMobileDeviceOnly": false,
+          "lastConnectionDate": "2026-06-14T19:19:03.000Z",
+          "pairingState": "paired",
+          "potentialHostnames": [],
+          "transportType": "sameMachine",
+          "tunnelState": "disconnected"
+        },
+        "deviceProperties": {
+          "bootState": "shutdown",
+          "ddiServicesAvailable": false,
+          "hasInternalOSBuild": false,
+          "name": "iPhone 17",
+          "osBuildUpdate": "23F77",
+          "osVersionNumber": "26.5",
+          "provider": "com.apple.CoreSimulator.SimulatorCoreDevicePlugin"
+        },
+        "hardwareProperties": {
+          "cpuType": {
+            "name": "arm64",
+            "subType": 0,
+            "type": 16777228
+          },
+          "deviceType": "iPhone",
+          "hardwareModel": "V57",
+          "marketingName": "iPhone 17",
+          "platform": "iOS",
+          "productType": "iPhone18,3",
+          "reality": "simulated",
+          "supportedCPUTypes": [
+            {
+              "name": "arm64",
+              "subType": 0,
+              "type": 16777228
+            }
+          ],
+          "udid": "0B0B0B0B-0000-4000-8000-000000000002"
+        },
+        "identifier": "0B0B0B0B-0000-4000-8000-000000000002",
+        "properties": {
+          "connection": {
+            "authenticationType": "implicit",
+            "lastConnectionDate": 803157543,
+            "pairingState": "paired",
+            "state": "disconnected",
+            "transportType": "sameMachine"
+          },
+          "hardware": {
+            "cpuType": {
+              "subtype": 0,
+              "type": 16777228
+            },
+            "deviceType": "iPhone",
+            "hasActionButton": true,
+            "marketingName": "iPhone 17",
+            "platform": "iOS",
+            "productType": "iPhone18,3",
+            "reality": "simulated",
+            "supportedBiometrics": [
+              "faceID"
+            ],
+            "supportedCPUTypes": [
+              {
+                "subtype": 0,
+                "type": 16777228
+              }
+            ],
+            "supportsSiri": true,
+            "udid": "0B0B0B0B-0000-4000-8000-000000000002"
+          },
+          "software": {
+            "osBuildVersions": {
+              "buildVersion": {
+                "majorLetterComponent": "F",
+                "majorNumberComponent": 23,
+                "name": "23F77",
+                "revisionVersion": {
+                  "components": [
+                    23,
+                    6,
+                    77,
+                    0,
+                    0
+                  ],
+                  "originalComponentsCount": 5,
+                  "stringValue": "23.6.77.0.0"
+                },
+                "updateNumberComponent": 77
+              }
+            },
+            "osVersionNumber": {
+              "components": [
+                26,
+                5,
+                0,
+                0,
+                0
+              ],
+              "originalComponentsCount": 2,
+              "stringValue": "26.5"
+            }
+          },
+          "state": {
+            "bootState": "shutdown",
+            "name": "iPhone 17",
+            "preparednessState": 0,
+            "visibilityClass": "simulators"
+          }
+        },
+        "propertyDisplayNames": null,
+        "visibilityClass": "simulators"
+      },
+      {
+        "_deprecationNotice": {
+          "deprecatedFields": [
+            "hardwareProperties",
+            "deviceProperties",
+            "connectionProperties"
+          ],
+          "message": "The 'hardwareProperties', 'deviceProperties', 'connectionProperties' fields are deprecated and will be removed in a future release. Use the 'properties' dictionary instead.",
+          "replacement": "properties"
+        },
+        "connectionProperties": {
+          "authenticationType": "implicit",
+          "isMobileDeviceOnly": false,
+          "lastConnectionDate": "2026-10-04T23:10:41.000Z",
+          "pairingState": "paired",
+          "potentialHostnames": [],
+          "transportType": "sameMachine",
+          "tunnelState": "disconnected"
+        },
+        "deviceProperties": {
+          "bootState": "shutdown",
+          "ddiServicesAvailable": false,
+          "hasInternalOSBuild": false,
+          "name": "iPhone 17 Pro",
+          "osBuildUpdate": "23F77",
+          "osVersionNumber": "26.5",
+          "provider": "com.apple.CoreSimulator.SimulatorCoreDevicePlugin"
+        },
+        "hardwareProperties": {
+          "cpuType": {
+            "name": "arm64",
+            "subType": 0,
+            "type": 16777228
+          },
+          "deviceType": "iPhone",
+          "hardwareModel": "V53",
+          "marketingName": "iPhone 17 Pro",
+          "platform": "iOS",
+          "productType": "iPhone18,1",
+          "reality": "simulated",
+          "supportedCPUTypes": [
+            {
+              "name": "arm64",
+              "subType": 0,
+              "type": 16777228
+            }
+          ],
+          "udid": "0B0B0B0B-0000-4000-8000-000000000003"
+        },
+        "identifier": "0B0B0B0B-0000-4000-8000-000000000003",
+        "properties": {
+          "connection": {
+            "authenticationType": "implicit",
+            "lastConnectionDate": 812848241,
+            "pairingState": "paired",
+            "state": "disconnected",
+            "transportType": "sameMachine"
+          },
+          "hardware": {
+            "cpuType": {
+              "subtype": 0,
+              "type": 16777228
+            },
+            "deviceType": "iPhone",
+            "hasActionButton": true,
+            "marketingName": "iPhone 17 Pro",
+            "platform": "iOS",
+            "productType": "iPhone18,1",
+            "reality": "simulated",
+            "supportedBiometrics": [
+              "faceID"
+            ],
+            "supportedCPUTypes": [
+              {
+                "subtype": 0,
+                "type": 16777228
+              }
+            ],
+            "supportsSiri": true,
+            "udid": "0B0B0B0B-0000-4000-8000-000000000003"
+          },
+          "software": {
+            "osBuildVersions": {
+              "buildVersion": {
+                "majorLetterComponent": "F",
+                "majorNumberComponent": 23,
+                "name": "23F77",
+                "revisionVersion": {
+                  "components": [
+                    23,
+                    6,
+                    77,
+                    0,
+                    0
+                  ],
+                  "originalComponentsCount": 5,
+                  "stringValue": "23.6.77.0.0"
+                },
+                "updateNumberComponent": 77
+              }
+            },
+            "osVersionNumber": {
+              "components": [
+                26,
+                5,
+                0,
+                0,
+                0
+              ],
+              "originalComponentsCount": 2,
+              "stringValue": "26.5"
+            }
+          },
+          "state": {
+            "bootState": "shutdown",
+            "name": "iPhone 17 Pro",
+            "preparednessState": 0,
+            "visibilityClass": "simulators"
+          }
+        },
+        "propertyDisplayNames": null,
+        "visibilityClass": "simulators"
+      },
+      {
+        "_deprecationNotice": {
+          "deprecatedFields": [
+            "hardwareProperties",
+            "deviceProperties",
+            "connectionProperties"
+          ],
+          "message": "The 'hardwareProperties', 'deviceProperties', 'connectionProperties' fields are deprecated and will be removed in a future release. Use the 'properties' dictionary instead.",
+          "replacement": "properties"
+        },
+        "connectionProperties": {
+          "authenticationType": "implicit",
+          "isMobileDeviceOnly": false,
+          "lastConnectionDate": "2026-10-05T20:19:06.000Z",
+          "pairingState": "paired",
+          "potentialHostnames": [],
+          "transportType": "sameMachine",
+          "tunnelState": "disconnected"
+        },
+        "deviceProperties": {
+          "bootState": "shutdown",
+          "ddiServicesAvailable": false,
+          "hasInternalOSBuild": false,
+          "name": "iPhone 18 Pro",
+          "osBuildUpdate": "24A434",
+          "osVersionNumber": "27.0",
+          "provider": "com.apple.CoreSimulator.SimulatorCoreDevicePlugin"
+        },
+        "hardwareProperties": {
+          "cpuType": {
+            "name": "arm64",
+            "subType": 0,
+            "type": 16777228
+          },
+          "deviceType": "iPhone",
+          "hardwareModel": "V63",
+          "marketingName": "iPhone 18 Pro",
+          "platform": "iOS",
+          "productType": "iPhone19,2",
+          "reality": "simulated",
+          "supportedCPUTypes": [
+            {
+              "name": "arm64",
+              "subType": 0,
+              "type": 16777228
+            }
+          ],
+          "udid": "0B0B0B0B-0000-4000-8000-000000000004"
+        },
+        "identifier": "0B0B0B0B-0000-4000-8000-000000000004",
+        "properties": {
+          "connection": {
+            "authenticationType": "implicit",
+            "lastConnectionDate": 812924346,
+            "pairingState": "paired",
+            "state": "disconnected",
+            "transportType": "sameMachine"
+          },
+          "hardware": {
+            "cpuType": {
+              "subtype": 0,
+              "type": 16777228
+            },
+            "deviceType": "iPhone",
+            "hasActionButton": true,
+            "marketingName": "iPhone 18 Pro",
+            "platform": "iOS",
+            "productType": "iPhone19,2",
+            "reality": "simulated",
+            "supportedBiometrics": [
+              "faceID"
+            ],
+            "supportedCPUTypes": [
+              {
+                "subtype": 0,
+                "type": 16777228
+              }
+            ],
+            "supportsSiri": true,
+            "udid": "0B0B0B0B-0000-4000-8000-000000000004"
+          },
+          "software": {
+            "osBuildVersions": {
+              "buildVersion": {
+                "majorLetterComponent": "A",
+                "majorNumberComponent": 24,
+                "name": "24A434",
+                "revisionVersion": {
+                  "components": [
+                    24,
+                    1,
+                    434,
+                    0,
+                    0
+                  ],
+                  "originalComponentsCount": 5,
+                  "stringValue": "24.1.434.0.0"
+                },
+                "updateNumberComponent": 434
+              }
+            },
+            "osVersionNumber": {
+              "components": [
+                27,
+                0,
+                0,
+                0,
+                0
+              ],
+              "originalComponentsCount": 2,
+              "stringValue": "27.0"
+            }
+          },
+          "state": {
+            "bootState": "shutdown",
+            "name": "iPhone 18 Pro",
+            "preparednessState": 0,
+            "visibilityClass": "simulators"
+          }
+        },
+        "propertyDisplayNames": null,
+        "visibilityClass": "simulators"
+      }
+    ]
+  }
+}

@@ -8,9 +8,7 @@ public struct ViewerLink: Sendable {
         URL(string: "http://127.0.0.1:\(controlPort)/#token=\(token.value)")!
     }
 
-    public static let defaultFile = FileManager.default
-        .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        .appendingPathComponent("glasstap/viewer-link")
+    public static let defaultFile = GlasstapFolder.url.appendingPathComponent("viewer-link")
 
     public let file: URL
 
@@ -21,9 +19,7 @@ public struct ViewerLink: Sendable {
     /// Writes the link with owner-only access (folder 700, file 600), because it holds the token.
     public func write(_ url: URL) throws {
         let fm = FileManager.default
-        let folder = file.deletingLastPathComponent()
-        try fm.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path)
+        try GlasstapFolder.ensurePrivate(file.deletingLastPathComponent())
         // A new file gets mode 600 at creation, so the token is never readable by others.
         try? fm.removeItem(at: file)
         guard fm.createFile(atPath: file.path, contents: Data((url.absoluteString + "\n").utf8),

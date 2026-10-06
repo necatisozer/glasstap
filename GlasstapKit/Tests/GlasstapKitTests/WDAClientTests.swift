@@ -143,6 +143,6 @@ final class FakeWDA: @unchecked Sendable {
     }
 
     @Test func unreachable() async {
-        #expect(!(await WDAClient(baseURL: URL(string: "http://127.0.0.1:1")!).isReachable()))
+        #expect(!(await WDAClient.isReachable(URL(string: "http://127.0.0.1:1")!)))
     }
 }
