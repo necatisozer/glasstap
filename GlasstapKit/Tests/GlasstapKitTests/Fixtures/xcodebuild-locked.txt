@@ -1,0 +1,13 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -xctestrun "/Users/test/Library/Application Support/glasstap/wda-build/16.12.10-ABCDE12345-glasstap.wda.abcde12345-ios26/Build/Products/WebDriverAgentRunner_iphoneos27.0-arm64.xctestrun" -destination id=00008110-000A1B2C3D4E5F60
+
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:iOS, arch:arm64e, id:00008110-000A1B2C3D4E5F60, name:Test’s iPhone }
+{ platform:iOS, arch:arm64, id:00008110-000A1B2C3D4E5F60, name:Test’s iPhone }
+Testing started
+2026-10-07 00:57:51.040 xcodebuild[14536:21755189] [MT] Run Destination Preflight: The destination is not ready.
+Error Domain=com.apple.dt.deviceprep Code=-3 "Unlock Test’s iPhone to Continue" UserInfo={NSRecoveryAttempter=<_DVTErrorRecoveryAttempter: 0xc4d0d1a20>, NSLocalizedRecoveryOptions=(
+    "Cancel Testing"
+), NSLocalizedRecoverySuggestion=Xcode cannot launch WebDriverAgentRunner on Test’s iPhone because the device is locked., DVTRecoveryBlockKey=<__NSMallocBlock__: 0xc4cd85e30>, NSLocalizedDescription=Unlock Test’s iPhone to Continue}
+2026-10-07 00:57:51.040 xcodebuild[14536:21755189] [MT] Run Destination Preflight: Waiting for the destination to become ready.
+** BUILD INTERRUPTED **

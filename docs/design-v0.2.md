@@ -47,7 +47,7 @@ Not in v0.2: a notarized DMG (v0.3), WebRTC, a hosted relay, and an MCP server.
 
 The menu shows the state of WDA: downloading, building, starting, running, restarting with the wait, or failed with the reason.
 
-**Device identity.** The app gets the UDID by a match of the capture device's name in `devicectl list devices`. It uses only physical devices with a connected or connectable tunnel, and the name must match exactly. One failed lookup does not stop a WDA that runs, because a lookup can fail for a short time. The app stops WDA when the capture device goes, or when a failure has lasted 15 s.
+**Device identity.** The app gets the UDID by a match of the capture device's name in `devicectl list devices`. It uses only physical devices with a connected or connectable tunnel, or paired devices on USB, and the name must match exactly. The tunnel of an idle iPhone on USB stays "disconnected" until a devicectl command or xcodebuild uses it. One failed lookup does not stop a WDA that runs, because a lookup can fail for a short time. The app stops WDA when the capture device goes, or when a failure has lasted 15 s.
 
 The app looks the iPhone up again after an event: a device change, **Check Again**, or the app coming to the front. Requests within 300 ms give one lookup. While the iPhone is not paired or devicectl fails, the app also looks again after 5, 10, 30 and then every 60 s. Developer Mode off and a duplicate name wait for an event, because only the user can fix them.
 

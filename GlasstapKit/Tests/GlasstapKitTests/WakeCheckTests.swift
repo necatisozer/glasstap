@@ -104,6 +104,7 @@ import Testing
         #expect(problems(team: "", override: URL(string: "http://127.0.0.1:8100")).isEmpty)
         #expect(problems(cameraDenied: true) == [.camera])
         #expect(problems(wda: .failed("x")) == [.wda(device: "A", "x")])
+        #expect(problems(wda: .waitingForUnlock) == [.wda(device: "A", WDAState.unlockHint)])
         #expect(problems(wda: .restarting(in: .seconds(2))).isEmpty)
         var identity = DeviceIdentity()
         identity.record(.failure(.notPaired), at: .zero)

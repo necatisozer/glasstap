@@ -3,6 +3,11 @@ import Testing
 @testable import GlasstapKit
 
 /// Fixtures are real devicectl output with every id, serial, hostname and address replaced.
+/// A text fixture, line by line.
+func fixtureLines(_ name: String) throws -> [String] {
+    String(decoding: try fixture(name), as: UTF8.self).split(separator: "\n").map(String.init)
+}
+
 func fixture(_ name: String) throws -> Data {
     let url = try #require(Bundle.module.url(forResource: name, withExtension: nil, subdirectory: "Fixtures"))
     return try Data(contentsOf: url)
@@ -18,11 +23,12 @@ func fixture(_ name: String) throws -> Data {
         #expect(devices.filter(\.isPhysical).count == 2)
         let wired = try #require(devices.first { $0.udid == "00008101-000A1B2C3D4E5F60" })
         #expect(wired == CoreDevice(udid: "00008101-000A1B2C3D4E5F60", name: "Test iPhone 12 Pro", isPhysical: true,
-                                    tunnelState: "connected", developerModeStatus: "enabled",
-                                    osVersion: "26.5", tunnelIPAddress: "fd00:3333:4444::1"))
+                                    tunnelState: "connected", transportType: "wired", pairingState: "paired",
+                                    developerModeStatus: "enabled", osVersion: "26.5", tunnelIPAddress: "fd00:3333:4444::1"))
         let away = try #require(devices.first { $0.udid == "00008110-0001A2B3C4D5E6F7" })
         #expect(away.name == curlyName)
         #expect(away.tunnelState == "disconnected")
+        #expect(away.transportType == "localNetwork")
         #expect(away.tunnelIPAddress == nil)
         let simulator = try #require(devices.first { !$0.isPhysical })
         #expect(simulator.developerModeStatus == nil)
@@ -69,9 +75,10 @@ func fixture(_ name: String) throws -> Data {
 
     // MARK: - Matching the capture name
 
-    func device(_ name: String, udid: String, tunnel: String = "connected", developerMode: String = "enabled",
-                physical: Bool = true) -> CoreDevice {
-        CoreDevice(udid: udid, name: name, isPhysical: physical, tunnelState: tunnel, developerModeStatus: developerMode)
+    func device(_ name: String, udid: String, tunnel: String = "connected", transport: String = "localNetwork",
+                pairing: String = "paired", developerMode: String = "enabled", physical: Bool = true) -> CoreDevice {
+        CoreDevice(udid: udid, name: name, isPhysical: physical, tunnelState: tunnel, transportType: transport,
+                   pairingState: pairing, developerModeStatus: developerMode)
     }
 
     @Test func aUniqueNameGivesTheUDID() throws {
@@ -100,6 +107,14 @@ func fixture(_ name: String) throws -> Data {
     @Test func connectableCountsAndDisconnectedDoesNot() {
         #expect(Devicectl.match(captureName: "P", in: [device("P", udid: "A", tunnel: "connectable")]).map(\.udid) == .success("A"))
         #expect(Devicectl.match(captureName: "P", in: [device("P", udid: "A", tunnel: "disconnected")]) == .failure(.notPaired))
+    }
+
+    @Test func aPairedIPhoneOnUSBCountsWhileItsTunnelIsDown() {
+        let idle = device("P", udid: "A", tunnel: "disconnected", transport: "wired")
+        #expect(Devicectl.match(captureName: "P", in: [idle]).map(\.udid) == .success("A"))
+        // An iPhone that does not trust this Mac yet needs the user first.
+        let untrusted = device("P", udid: "A", tunnel: "disconnected", transport: "wired", pairing: "unpaired")
+        #expect(Devicectl.match(captureName: "P", in: [untrusted]) == .failure(.notPaired))
     }
 
     @Test func duplicateNamesAskForARename() {

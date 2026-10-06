@@ -110,6 +110,7 @@ extension WDAState {
         case .downloading: "downloading WebDriverAgent…"
         case .building: "building (the first build takes a few minutes)…"
         case .starting: "starting…"
+        case .waitingForUnlock: WDAState.unlockHint
         case .running: "running"
         case let .restarting(delay): "restarting in \(delay.components.seconds) s"
         case let .failed(reason): "failed. \(reason)"

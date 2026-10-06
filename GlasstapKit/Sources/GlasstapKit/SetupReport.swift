@@ -42,7 +42,11 @@ public enum SetupReport {
         }
         if cameraDenied { problems.append(.camera) }
         for device in devices {
-            if case let .failed(reason) = device.wda { problems.append(.wda(device: device.id, reason)) }
+            switch device.wda {
+            case let .failed(reason): problems.append(.wda(device: device.id, reason))
+            case .waitingForUnlock: problems.append(.wda(device: device.id, WDAState.unlockHint))
+            default: break
+            }
         }
         return problems
     }

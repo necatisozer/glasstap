@@ -7,10 +7,15 @@ public enum WDAState: Sendable, Equatable {
     case downloading
     case building
     case starting
+    /// The iPhone is locked. The test run waits, and goes on after the unlock.
+    case waitingForUnlock
     case running
     case restarting(in: Duration)
     /// Needs the user: a restart, a new setting or a new device starts again.
     case failed(String)
+
+    /// What the user must do in `waitingForUnlock`. It starts in lower case, like the other menu lines.
+    public static let unlockHint = "unlock the iPhone. WDA starts after the unlock."
 }
 
 public struct WDAStatus: Sendable, Equatable {
@@ -415,6 +420,12 @@ public actor WDAManager {
             switch event {
             case let .line(line):
                 output.consume(line)
+                // A locked iPhone can wait for longer than the start timeout, and a restart would not help.
+                if status.state == .starting, XcodebuildOutput.isWaitingForUnlock(line) {
+                    timer.cancel()
+                    publish(.waitingForUnlock)
+                    continue
+                }
                 guard runningSince == nil, let ready = XcodebuildOutput.serverURL(in: line) else { continue }
                 timer.cancel()
                 let port = ready.port ?? 8100
@@ -469,7 +480,8 @@ public actor WDAManager {
     private func publish(_ state: WDAState, baseURL: URL? = nil, problem: (String, [String])? = nil) {
         status.state = state
         status.baseURL = baseURL
-        if state == .running {
+        // The failure of an earlier attempt says nothing about these states.
+        if state == .running || state == .waitingForUnlock {
             status.lastError = nil
             status.lastLines = []
         }

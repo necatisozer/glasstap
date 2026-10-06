@@ -369,6 +369,22 @@ func eventually(timeout: Duration = .seconds(5), _ condition: () async -> Bool) 
         #expect(await rig.manager.status.lastLines == ["Testing started"])
     }
 
+    @Test func aLockedIPhoneWaitsPastTheTimeoutForTheUnlock() async throws {
+        let rig = Rig()
+        rig.manager.setTarget(target)
+        await rig.manager.commandsDone()
+        let process = try #require(await rig.waitForProcess(1))
+        for line in try fixtureLines("xcodebuild-locked.txt") { process.emit(line) }
+        #expect(await rig.waitFor(.waitingForUnlock))
+        rig.clock.advance(by: WDAManager.startTimeout * 2)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(await rig.state() == .waitingForUnlock)
+        #expect(!process.wasTerminated)
+
+        process.emit(ready)
+        #expect(await rig.waitFor(.running))
+    }
+
     @Test func aSigningErrorAtStartRebuildsOnceThenFails() async throws {
         let rig = Rig()
         rig.manager.setTarget(target)
