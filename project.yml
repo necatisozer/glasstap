@@ -1,0 +1,39 @@
+name: glasstap
+options:
+  bundleIdPrefix: io.github.necatisozer
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+packages:
+  GlasstapKit:
+    path: GlasstapKit
+targets:
+  glasstap:
+    type: application
+    platform: macOS
+    sources:
+      - path: App
+      - path: Viewer/index.html
+        buildPhase: resources
+    dependencies:
+      - package: GlasstapKit
+    configFiles:
+      Debug: Config/Signing.xcconfig
+      Release: Config/Signing.xcconfig
+    settings:
+      base:
+        PRODUCT_NAME: glasstap
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.necatisozer.glasstap
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "6.0"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_LSUIElement: YES
+        INFOPLIST_KEY_NSCameraUsageDescription: glasstap captures the screen of the iPhone connected over USB, to show it in your browser.
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+        INFOPLIST_KEY_NSHumanReadableCopyright: Copyright © 2026 Necati Sözer. MIT licence.
+        CODE_SIGN_ENTITLEMENTS: App/glasstap.entitlements
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_APP_SANDBOX: NO
+        ENABLE_HARDENED_RUNTIME: NO
+        DEAD_CODE_STRIPPING: YES

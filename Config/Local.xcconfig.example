@@ -1,0 +1,4 @@
+// Copy this file to Config/Local.xcconfig and set your own team id. Git ignores
+// Local.xcconfig, so your team stays out of the repo. Find the id in Xcode >
+// Settings > Accounts, or in the "OU" field of your Apple Development certificate.
+DEVELOPMENT_TEAM = ABCDE12345
