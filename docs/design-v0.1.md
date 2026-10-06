@@ -80,6 +80,13 @@ The engine keeps the behaviour that the prototype discovered. See [`prototype/ip
 
 The video listener keeps the prototype's format: a 4-byte big-endian length, a type byte and a payload. The types are 0 (config JSON), 1 (key frame), 2 (delta frame) and 3 (another viewer took the stream). The frames are Annex B with the parameter sets in front of each key frame. The page decodes them with WebCodecs, as in [`prototype/phone_remote.html`](../prototype/phone_remote.html).
 
+v0.2 adds a `session` to the config JSON: a random id for each viewer's stream. The viewer names it when it reports the bytes that it has received. See [adaptive bitrate](design-v0.2.md#adaptive-bitrate).
+
+v0.2 also adds type 4 (stats JSON), for adaptive bitrate. Its payload is `{"bitrate": …, "fps": …}`: the bitrate in bit/s and the frame rate that the encoder aims at now. Both are below the settings while the link to the viewer is congested. The server sends a stats message when the viewer joins and at each change.
+
+- **Only on request.** A viewer gets type 4 only if its video URL has `stats=1`. The pages before v0.2 decode every type other than 0 and 3 as a frame, so a stats message would break their decoder.
+- **Unknown types.** A reader must skip a type that it does not know. The v0.2 page does this, so a later type needs no new request flag.
+
 ## Permissions and signing
 
 - `Info.plist` has `NSCameraUsageDescription` and `LSUIElement`. macOS asks for camera access at the first capture, because it treats the iPhone screen as a camera.

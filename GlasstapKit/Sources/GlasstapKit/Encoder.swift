@@ -17,7 +17,8 @@ final class Encoder: @unchecked Sendable {
     private let onDrop: @Sendable () -> Void
     private let log = Logger(subsystem: "io.github.necatisozer.glasstap", category: "encoder")
 
-    init(settings: EncoderSettings, width: Int, height: Int,
+    /// `keyFrameInterval` is the most seconds between two key frames.
+    init(settings: EncoderSettings, width: Int, height: Int, keyFrameInterval: Int = 2,
          onDrop: @escaping @Sendable () -> Void = {},
          onFrame: @escaping @Sendable (_ message: Data, _ key: Bool, _ config: StreamConfig?) -> Void) throws {
         codec = settings.codec
@@ -47,12 +48,9 @@ final class Encoder: @unchecked Sendable {
             kVTCompressionPropertyKey_ProfileLevel: profile,
             kVTCompressionPropertyKey_AverageBitRate: settings.bitrate,
             kVTCompressionPropertyKey_ExpectedFrameRate: settings.fps,
-            kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration: 2,
+            kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration: keyFrameInterval,
         ]
-        for (k, v) in props {
-            let st = VTSessionSetProperty(created, key: k, value: v as CFTypeRef)
-            if st != noErr { log.notice("encoder property \(k as String) not set: \(st)") }
-        }
+        set(props)
         VTCompressionSessionPrepareToEncodeFrames(created)
         log.info("encoder ready: \(width)x\(height) \(settings.codec.rawValue)")
     }
@@ -69,7 +67,35 @@ final class Encoder: @unchecked Sendable {
         }
     }
 
+    /// Changes the bitrate of the running session. VideoToolbox applies it from the next frame,
+    /// with no new key frame. The expected frame rate stays at the settings even when the capture
+    /// sends fewer frames: a lower one makes VideoToolbox spend more bits on each frame, and
+    /// the stream then grows (measured: 245 kbit/s at 5 fps against 185 at 30, for 150 kbit/s).
+    func setBitrate(_ bitrate: Int) {
+        set([kVTCompressionPropertyKey_AverageBitRate: bitrate])
+    }
+
+    /// The current value of a number property, for tests.
+    func intProperty(_ key: CFString) -> Int? {
+        var value: CFTypeRef?
+        let status = withUnsafeMutablePointer(to: &value) {
+            VTSessionCopyProperty(session, key: key, allocator: nil, valueOut: $0)
+        }
+        guard status == noErr else { return nil }
+        return (value as? NSNumber)?.intValue
+    }
+
+    private func set(_ props: [CFString: Any]) {
+        for (k, v) in props {
+            let st = VTSessionSetProperty(session, key: k, value: v as CFTypeRef)
+            if st != noErr { log.notice("encoder property \(k as String) not set: \(st)") }
+        }
+    }
+
+    /// Hands out the frames still in the encoder, then ends the session. A new session for
+    /// another size must not get frames of the old one after its own config.
     func invalidate() {
+        VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)
         VTCompressionSessionInvalidate(session)
     }
 

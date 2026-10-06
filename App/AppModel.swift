@@ -21,6 +21,8 @@ final class AppModel {
     private(set) var selectedDeviceID: String?
     private(set) var captureStatus: CaptureStatus = .idle
     private(set) var fps = 0
+    /// What the encoder aims at now. Adaptive bitrate lowers it on a congested link.
+    private(set) var encoderTarget: StreamStats?
     private(set) var viewerConnected = false
     /// The managed WDA, or the user's own at the override URL.
     private(set) var wdaStatus = WDAStatus()
@@ -244,7 +246,7 @@ final class AppModel {
     // A stopped listener reports no more states, so the latest state always belongs to the running one.
     private func startControlServer() {
         controlServer = ControlServer(
-            port: settings.controlPort, videoPort: settings.videoPort, token: token, wda: wda,
+            port: settings.controlPort, videoPort: settings.videoPort, token: token, wda: wda, hub: hub,
             pageTemplate: Self.viewerPage,
             onState: { [weak self] state in Task { @MainActor in self?.controlState = state } })
         controlServer?.start()
@@ -359,6 +361,7 @@ final class AppModel {
 
     private func tick() {
         update(\.fps, engine.takeFrameCount())
+        update(\.encoderTarget, hub.stats)
         update(\.viewerConnected, hub.viewerCount > 0)
     }
 

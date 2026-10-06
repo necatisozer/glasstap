@@ -62,6 +62,8 @@ import Testing
         let lookup = FakeLookup()
         let resolver: DeviceIdentityResolver
         let latest = OSAllocatedUnfairLock<DeviceIdentity?>(initialState: nil)
+        /// The clock's registrations at the last `advance`.
+        let advancedAt = OSAllocatedUnfairLock(initialState: 0)
 
         init() {
             let lookup = lookup
@@ -73,9 +75,13 @@ import Testing
 
         var identity: DeviceIdentity? { latest.withLock { $0 } }
 
-        /// Waits for the resolver's next sleep, then moves the clock past it.
+        /// Waits for the resolver's next sleep, then moves the clock past it. Any older sleeper,
+        /// such as the end of the grace period, does not count: the clock would otherwise move
+        /// before the resolver registers the sleep that this step is for, and that sleep would never end.
         func advance(by duration: Duration) async {
-            #expect(await eventually { clock.sleeperCount > 0 })
+            let after = advancedAt.withLock { $0 }
+            #expect(await eventually { clock.hasSleeper(registeredAfter: after, dueWithin: duration) })
+            advancedAt.withLock { $0 = clock.registrations }
             clock.advance(by: duration)
         }
     }
@@ -86,8 +92,9 @@ import Testing
         rig.resolver.select(screen)
         rig.resolver.recheck()
         rig.resolver.select(screen)
-        // The resolver handles the three requests on its own task. Each one replaces the waiting lookup.
-        try await Task.sleep(for: .milliseconds(30))
+        // The resolver handles the three requests on its own task. Each one replaces the waiting lookup,
+        // so only the third sleep is still waiting once all three have begun.
+        #expect(await eventually { rig.clock.sleepCalls == 3 })
         await rig.advance(by: DeviceIdentityResolver.debounce)
         #expect(await eventually { rig.identity?.result == .success(phone) })
         try await Task.sleep(for: .milliseconds(30))

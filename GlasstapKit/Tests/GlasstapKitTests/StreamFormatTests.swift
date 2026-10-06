@@ -31,6 +31,15 @@ import Testing
         #expect(messages[3].payload.isEmpty)
     }
 
+    @Test func statsMessage() throws {
+        let stats = StreamStats(bitrate: 620_000, fps: 15)
+        #expect(String(decoding: stats.json, as: UTF8.self) == #"{"bitrate":620000,"fps":15}"#)
+        var buffer = StreamMessage.encode(.stats, stats.json)
+        let messages = StreamMessage.decode(&buffer)
+        #expect(messages.map(\.type) == [4])
+        #expect(try JSONDecoder().decode(StreamStats.self, from: messages[0].payload) == stats)
+    }
+
     @Test func configJSON() throws {
         let json = StreamConfig(codec: "avc1.4d0033", width: 590, height: 1278).json
         #expect(String(decoding: json, as: UTF8.self) == #"{"codec":"avc1.4d0033","height":1278,"width":590}"#)

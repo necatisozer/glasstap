@@ -2,9 +2,12 @@ import Foundation
 
 /// The video stream format, after a plain HTTP 200 header: a sequence of
 /// messages, each a 4-byte big-endian length, then 1 type byte, then the payload.
-/// The length counts the type byte and the payload.
+/// The length counts the type byte and the payload. A reader skips a type that it does not know.
+/// Type 4 goes only to a viewer that asks for it with `stats=1` in the video URL, because
+/// pages before it decode every type other than 0 and 3 as a frame.
 public enum StreamMessageType: UInt8, Sendable {
-    /// JSON config {"codec": WebCodecs codec string, "width", "height"}.
+    /// JSON config {"codec": WebCodecs codec string, "width", "height", "session"}.
+    /// The viewer names the session when it reports the bytes it has received.
     case config = 0
     /// Key frame, Annex B with the parameter sets in front.
     case keyFrame = 1
@@ -12,6 +15,9 @@ public enum StreamMessageType: UInt8, Sendable {
     case deltaFrame = 2
     /// A newer viewer took the stream. The server closes this one.
     case replaced = 3
+    /// JSON stats {"bitrate": bits per second, "fps"}: the current encoder target.
+    /// It comes when the viewer joins and at each change.
+    case stats = 4
 }
 
 enum BigEndian {
@@ -80,18 +86,39 @@ public struct StreamConfig: Sendable, Equatable, Codable {
     public let codec: String
     public let width: Int
     public let height: Int
+    /// The id of one viewer's stream. The JSON leaves it out when it is nil.
+    public var session: String?
 
-    public init(codec: String, width: Int, height: Int) {
+    public init(codec: String, width: Int, height: Int, session: String? = nil) {
         self.codec = codec
         self.width = width
         self.height = height
+        self.session = session
     }
 
-    /// Sorted keys, so that the same config always gives the same bytes. The viewer
-    /// state compares the bytes to see whether the stream changed.
+    /// Sorted keys, so that the same config always gives the same bytes.
     public var json: Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        return try! encoder.encode(self)
+    }
+}
+
+/// The payload of a stats message: what the encoder aims at now. Adaptive bitrate
+/// lowers both below the settings while the link to the viewer is congested.
+public struct StreamStats: Sendable, Equatable, Codable {
+    /// Bits per second.
+    public var bitrate: Int
+    public var fps: Int
+
+    public init(bitrate: Int, fps: Int) {
+        self.bitrate = bitrate
+        self.fps = fps
+    }
+
+    public var json: Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
         return try! encoder.encode(self)
     }
 }

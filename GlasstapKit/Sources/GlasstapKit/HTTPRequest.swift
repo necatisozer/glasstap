@@ -91,7 +91,7 @@ public enum HTTPParser {
     }
 }
 
-/// A response that closes the connection after it is sent.
+/// A response. It closes the connection after it is sent, unless it is sent with `keepAlive`.
 public struct HTTPResponse: Sendable {
     public var status: Int
     public var headers: [(String, String)]
@@ -112,15 +112,19 @@ public struct HTTPResponse: Sendable {
     }
 
     public var serialized: Data {
-        header(contentLength: body.count) + body
+        serialized(keepAlive: false)
+    }
+
+    public func serialized(keepAlive: Bool) -> Data {
+        header(contentLength: body.count, keepAlive: keepAlive) + body
     }
 
     /// The status line and headers. A stream has no length: it ends when the connection closes.
-    public func header(contentLength: Int?) -> Data {
+    public func header(contentLength: Int?, keepAlive: Bool = false) -> Data {
         var head = "HTTP/1.1 \(status) \(Self.reason(status))\r\n"
         for (name, value) in headers { head += "\(name): \(value)\r\n" }
         if let contentLength { head += "Content-Length: \(contentLength)\r\n" }
-        head += "Connection: close\r\n\r\n"
+        head += keepAlive ? "Connection: keep-alive\r\n\r\n" : "Connection: close\r\n\r\n"
         return Data(head.utf8)
     }
 
