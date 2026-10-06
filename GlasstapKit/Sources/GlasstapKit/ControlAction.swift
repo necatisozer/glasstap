@@ -45,10 +45,12 @@ public enum ControlAction: Sendable, Equatable {
         case badBody
     }
 
+    /// The `<kind>` of each `POST /<kind>`.
+    public static let kinds: Set<String> = ["tap", "swipe", "switcher", "wake", "home", "type"]
+
     /// Parses `POST /<kind>` with its JSON body.
     public static func parse(kind: String, body: Data) throws(ParseError) -> ControlAction {
-        let known = ["tap", "swipe", "switcher", "wake", "home", "type"]
-        guard known.contains(kind) else { throw .unknownAction }
+        guard kinds.contains(kind) else { throw .unknownAction }
         let json: [String: Any]
         if body.isEmpty {
             json = [:]

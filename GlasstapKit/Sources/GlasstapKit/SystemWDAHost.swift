@@ -1,13 +1,17 @@
 import Foundation
+import os
 
 /// The real side effects of the WDA manager: the download, xcodebuild, devicectl and HTTP.
 public struct SystemWDAHost: WDAHost {
     public let root: URL
     public let source: WDASource
+    /// Shared by every iPhone, because the app passes one host to all sessions.
+    let folders: BuildFolders
 
     public init(root: URL = GlasstapFolder.url, source: WDASource = .pinned) {
         self.root = root
         self.source = source
+        folders = BuildFolders(root: root.appendingPathComponent("wda-build"))
     }
 
     /// A build that runs longer than this has hung.
@@ -32,16 +36,19 @@ public struct SystemWDAHost: WDAHost {
         try await Devicectl.details(udid: udid)
     }
 
-    func derivedData(for build: WDABuild) -> URL {
-        root.appendingPathComponent("wda-build/\(build.cacheKey)")
+    public func cachedTestRun(for build: WDABuild) async -> URL? {
+        await folders.cachedTestRun(key: build.cacheKey)
     }
 
-    public func cachedTestRun(for build: WDABuild) -> URL? {
-        WDABuild.findTestRun(inDerivedData: derivedData(for: build))
-    }
-
+    /// Two iPhones with the same iOS major version share the build folder, and two xcodebuild runs
+    /// in one folder conflict. The second build waits for the first, and then uses its result.
     public func build(_ build: WDABuild, source: URL, udid: String) async throws -> URL {
-        let folder = derivedData(for: build)
+        try await folders.build(key: build.cacheKey) { folder in
+            try await runBuild(build, source: source, udid: udid, folder: folder)
+        }
+    }
+
+    private func runBuild(_ build: WDABuild, source: URL, udid: String, folder: URL) async throws -> URL {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let xcconfig = folder.appendingPathComponent("glasstap-signing.xcconfig")
         try Data(build.xcconfig.utf8).write(to: xcconfig, options: .atomic)
@@ -56,18 +63,26 @@ public struct SystemWDAHost: WDAHost {
         return testRun
     }
 
-    public func removeBuild(_ build: WDABuild) {
-        try? FileManager.default.removeItem(at: derivedData(for: build))
+    public func removeBuild(_ build: WDABuild) async throws {
+        try await folders.removeBuild(key: build.cacheKey)
     }
 
     public func launch(testRun: URL, udid: String) async throws -> any WDAProcess {
         let pidFile = TestRunPidFile(root: root, udid: udid)
         // Two test runs on one device conflict. A crashed app leaves its run behind.
         await pidFile.stopStaleRun()
-        let child = try ChildProcess("/usr/bin/xcodebuild", WDABuild.testArguments(testRun: testRun, udid: udid),
+        // The folder stays while this run uses it, also if another iPhone needs a clean build.
+        let folder = await folders.acquire(testRun: testRun)
+        let child: ChildProcess
+        do {
+            child = try ChildProcess("/usr/bin/xcodebuild", WDABuild.testArguments(testRun: testRun, udid: udid),
                                      environment: Self.environment)
+        } catch {
+            if let folder { await folders.release(folder) }
+            throw error
+        }
         pidFile.write(child.pid)
-        return PidFileProcess(child: child, pidFile: pidFile)
+        return PidFileProcess(child: child, pidFile: pidFile, folder: folder, folders: folders)
     }
 
     public func isHealthy(_ baseURL: URL) async -> Bool {
@@ -79,6 +94,17 @@ public struct SystemWDAHost: WDAHost {
 struct PidFileProcess: WDAProcess {
     let child: ChildProcess
     let pidFile: TestRunPidFile
+    let folder: URL?
+    let folders: BuildFolders
+    /// A second terminate must not release the folder twice.
+    private let released = OSAllocatedUnfairLock(initialState: false)
+
+    init(child: ChildProcess, pidFile: TestRunPidFile, folder: URL?, folders: BuildFolders) {
+        self.child = child
+        self.pidFile = pidFile
+        self.folder = folder
+        self.folders = folders
+    }
 
     var lines: AsyncStream<String> { child.lines }
 
@@ -89,5 +115,10 @@ struct PidFileProcess: WDAProcess {
     func terminate() async {
         await child.terminate()
         pidFile.remove(ifHolding: child.pid)
+        let first = released.withLock { done in
+            defer { done = true }
+            return !done
+        }
+        if first, let folder { await folders.release(folder) }
     }
 }

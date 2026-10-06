@@ -15,9 +15,18 @@ struct SetupView: View {
             Section {
                 xcodeRow(problems)
                 teamRow(problems)
-                iPhoneRow(problems)
+                if model.sessions.isEmpty {
+                    noIPhoneRow()
+                } else {
+                    ForEach(model.sessions) { iPhoneRow($0, problems) }
+                }
                 cameraRow(problems)
-                wdaRow(problems)
+                if model.sessions.isEmpty {
+                    CheckRow(title: "WebDriverAgent", state: .waiting,
+                             line: WDAState.notConfigured.summary(teamSet: !model.settings.teamID.isEmpty).capitalizedFirst) {}
+                } else {
+                    ForEach(model.sessions) { wdaRow($0, problems) }
+                }
             } footer: {
                 HStack {
                     Spacer()
@@ -82,26 +91,32 @@ struct SetupView: View {
         if teamProblem == nil { teamDraft = model.settings.teamID }
     }
 
-    private func iPhoneRow(_ problems: [SetupProblem]) -> some View {
+    private func noIPhoneRow() -> some View {
+        let searching = model.isSearching
+        return CheckRow(title: "iPhone", state: searching ? .checking : .waiting,
+                        line: searching ? "Looking for an iPhone on USB…" : "No iPhone found.") {
+            if !searching {
+                Text("Plug in the iPhone with a USB cable, unlock it, and tap Trust when it asks.").hint()
+            }
+        }
+    }
+
+    /// One row for each iPhone, so that each one shows its own problem.
+    private func iPhoneRow(_ session: DeviceSession, _ problems: [SetupProblem]) -> some View {
+        let name = session.screen.name
         let state: CheckState
         let line: String
         var hint: String?
-        if let device = model.selectedDevice {
-            switch model.deviceIdentity {
-            case nil:
-                (state, line) = (.checking, "\(device.name): looking it up with devicectl…")
-            case let .success(core)?:
-                (state, line) = (.ok, "\(core.name), iOS \(core.osVersion ?? "?"), Developer Mode on")
-            case let .failure(problem)?:
-                // A young failure may still clear by itself, as the tunnel comes up.
-                (state, line) = (problems.contains(.iPhone(problem)) ? .problem : .checking, "\(device.name): \(problem.message)")
-                hint = problem.hint
-            }
-        } else if model.isSearching {
-            (state, line) = (.checking, "Looking for an iPhone on USB…")
-        } else {
-            (state, line) = (.waiting, "No iPhone found.")
-            hint = "Plug in the iPhone with a USB cable, unlock it, and tap Trust when it asks."
+        switch session.deviceIdentity {
+        case nil:
+            (state, line) = (.checking, "\(name): looking it up with devicectl…")
+        case let .success(core)?:
+            (state, line) = (.ok, "\(core.name), iOS \(core.osVersion ?? "?"), Developer Mode on")
+        case let .failure(problem)?:
+            // A young failure may still clear by itself, as the tunnel comes up.
+            let lasting = problems.contains(.iPhone(device: session.id, problem))
+            (state, line) = (lasting ? .problem : .checking, "\(name): \(problem.message)")
+            hint = problem.hint
         }
         return CheckRow(title: "iPhone", state: state, line: line) {
             if let hint { Text(hint).hint() }
@@ -127,15 +142,17 @@ struct SetupView: View {
         }
     }
 
-    private func wdaRow(_ problems: [SetupProblem]) -> some View {
-        let status = model.wdaStatus
+    private func wdaRow(_ session: DeviceSession, _ problems: [SetupProblem]) -> some View {
+        let status = session.wdaStatus
         let state: CheckState = switch status.state {
         case .failed: .problem
         case .running: .ok
         case .notConfigured: .waiting
         default: .checking
         }
-        let line = status.state.summary(teamSet: !model.settings.teamID.isEmpty).capitalizedFirst
+        let summary = status.state.summary(teamSet: !model.settings.teamID.isEmpty).capitalizedFirst
+        // With more than one iPhone, each row names its iPhone.
+        let line = model.sessions.count > 1 ? "\(session.screen.name): \(summary)" : summary
         return CheckRow(title: "WebDriverAgent", state: state, line: line) {
             if let error = status.lastError, status.state != .running, !line.contains(error) {
                 Text(error).hint()
@@ -150,7 +167,7 @@ struct SetupView: View {
                 .frame(height: 120)
             }
             if status.state != .notConfigured {
-                Button("Restart WDA") { model.restartWDA() }
+                Button("Restart WDA") { session.restartWDA() }
             }
         }
     }

@@ -62,9 +62,11 @@ public enum Auth {
     /// The check of the video listener.
     public static func video(_ request: HTTPRequest, token: AccessToken, viewerOrigins: Set<String>) -> VideoDecision {
         guard isLoopbackHost(request.header("host")) else { return .reject(status: 403) }
-        // Serve only /video, so that stray requests from other pages
+        // Serve only /video and /devices/<id>/video, so that stray requests from other pages
         // cannot take the stream from the viewer.
-        guard request.method == "GET", request.path == "/video" else { return .reject(status: 404) }
+        guard request.method == "GET", case let .route(_, rest)? = DevicePath.parse(request.path), rest == "/video" else {
+            return .reject(status: 404)
+        }
         // Require the token, so that other local users cannot read the screen.
         guard token.matches(request.queryValue("token")) else { return .reject(status: 403) }
         // Only the viewer page may read the stream. "*" would let any website read the screen.

@@ -58,6 +58,18 @@ The Setup window lists what glasstap needs and what is missing. It opens at the 
 
 glasstap keeps the WDA source and its builds in `~/Library/Application Support/glasstap/`.
 
+## More than one iPhone
+
+Plug in each iPhone. glasstap captures each one, and starts a WebDriverAgent for each one. The menu shows one section for each iPhone. **Open Viewer** in a section opens the page of that iPhone.
+
+The link of **Copy Viewer Link** and of the link file names no iPhone. With one iPhone, the page uses it. With more, the page shows a picker. To open one iPhone directly, add `&device=<UDID>` to the link.
+
+Each iPhone must have its own name. If two iPhones have the same name, glasstap cannot tell them apart, and the menu asks you to rename one in Settings > General > About.
+
+`GET /devices` on the viewer port lists the iPhones. It needs the token in the `X-Glasstap` header. The actions are at `/devices/<UDID>/tap` and so on, and the video is at `/devices/<UDID>/video` on the video port. The paths without `/devices/<UDID>` work while only one iPhone is connected.
+
+The WDA URL override in the settings is for one iPhone. While more than one iPhone is connected, glasstap does not use it.
+
 ## View from another Mac
 
 The app listens only on 127.0.0.1. To view from another Mac, forward both ports over SSH. Use two separate SSH connections. On one shared connection, taps wait behind the video:
@@ -85,7 +97,7 @@ The link holds the access token of the current app launch. Only your user can re
 ## Things to know
 
 - **The clock shows 9:41 while the capture runs.** iOS shows a clean status bar during screen capture. The phone's real clock does not change.
-- **One viewer at a time.** If you open a second page, it takes the stream, and the first page shows "Take it back".
+- **One viewer for each iPhone.** If you open a second page for the same iPhone, it takes the stream, and the first page shows "Take it back".
 - **The capture sends frames only while the screen changes.** A still screen uses almost no bandwidth.
 - **If the iPhone display is off, there is no picture.** The app presses Home when the lock screen is in front. If an app is in front, the menu shows "Wake the iPhone", and you wake it yourself.
 

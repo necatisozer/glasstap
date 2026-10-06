@@ -2,12 +2,12 @@ import Foundation
 import Network
 import os
 
-/// Serves the viewer page and the actions on 127.0.0.1:<port>.
+/// Serves the viewer page, the list of iPhones and the actions on 127.0.0.1:<port>.
+/// An action goes to `/devices/<id>/<action>`, or to `/<action>` while only one iPhone is connected.
 public final class ControlServer: @unchecked Sendable {
     private let token: AccessToken
-    private let wda: WDAClient
-    /// Takes the viewer's reports of the bytes it has received, for adaptive bitrate.
-    private let hub: ViewerHub?
+    /// The WDA client and the viewer hub of each iPhone. The hub takes the viewer's reports for adaptive bitrate.
+    private let devices: DeviceDirectory
     /// The viewer HTML with its `__VIDEO_PORT__` placeholder.
     private let pageTemplate: String?
     /// The page as served, built once for each video port.
@@ -16,11 +16,10 @@ public final class ControlServer: @unchecked Sendable {
     private let log = Logger(subsystem: "io.github.necatisozer.glasstap", category: "control-server")
 
     /// `pageTemplate` is the viewer HTML. The page learns the video port from this server.
-    public init(port: UInt16, videoPort: UInt16, token: AccessToken, wda: WDAClient, hub: ViewerHub? = nil,
+    public init(port: UInt16, videoPort: UInt16, token: AccessToken, devices: DeviceDirectory,
                 pageTemplate: String?, onState: @escaping @Sendable (ListenerState) -> Void) {
         self.token = token
-        self.wda = wda
-        self.hub = hub
+        self.devices = devices
         self.pageTemplate = pageTemplate
         page = OSAllocatedUnfairLock(initialState: Self.page(pageTemplate, videoPort: videoPort))
         listener = LoopbackListener(name: "control-server", port: port, onState: onState)
@@ -78,18 +77,42 @@ public final class ControlServer: @unchecked Sendable {
             guard let body = page.withLock({ $0 }) else { return .text(404, "the viewer page is missing from the app") }
             return HTTPResponse(status: 200, headers: [("Content-Type", "text/html; charset=utf-8")], body: body)
         }
-        if request.method == "POST", request.path == "/stats" { return statsResponse(to: request) }
-        do {
-            return try await wdaResponse(to: request)
-        } catch {
-            log.error("\(request.method) \(request.path) failed: \(String(describing: error), privacy: .public)")
-            return .text(502, String(describing: error))
+        switch DevicePath.parse(request.path) {
+        case .list?:
+            guard request.method == "GET" else { return .text(404, "not found") }
+            return .json((try? Self.encoder.encode(devices.listing)) ?? Data("[]".utf8))
+        case let .route(id, rest)?:
+            // An unknown path is 404 whatever the iPhones, so that 409 means only "name the iPhone".
+            guard Self.isAction(method: request.method, path: rest) else { return .text(404, "not found") }
+            let route: DeviceRoute
+            switch devices.route(id) {
+            case let .success(found): route = found
+            case let .failure(error): return .text(error.status, error.message)
+            }
+            if rest == "/stats" { return statsResponse(to: request, hub: route.hub) }
+            do {
+                return try await wdaResponse(to: request, path: rest, wda: route.client)
+            } catch {
+                log.error("\(request.method) \(request.path) failed: \(String(describing: error), privacy: .public)")
+                return .text(502, String(describing: error))
+            }
+        case nil:
+            return .text(404, "not found")
+        }
+    }
+
+    /// The paths of one iPhone, after `/devices/<id>`.
+    static func isAction(method: String, path: String) -> Bool {
+        switch method {
+        case "GET": path == "/info" || path == "/screenshot"
+        case "POST": path == "/stats" || ControlAction.kinds.contains(String(path.dropFirst()))
+        default: false
         }
     }
 
     /// The requests that WDA answers. A WDA failure throws, and the caller turns it into 502.
-    private func wdaResponse(to request: HTTPRequest) async throws -> HTTPResponse {
-        switch (request.method, request.path) {
+    private func wdaResponse(to request: HTTPRequest, path: String, wda: WDAClient) async throws -> HTTPResponse {
+        switch (request.method, path) {
         case ("GET", "/screenshot"):
             let png = try await wda.screenshot()
             return HTTPResponse(status: 200, headers: [
@@ -99,10 +122,9 @@ public final class ControlServer: @unchecked Sendable {
         case ("GET", "/info"):
             return .json(try JSONEncoder().encode(try await wda.windowSize()))
         case ("POST", _):
-            let kind = request.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             let action: ControlAction
             do {
-                action = try ControlAction.parse(kind: kind, body: request.body)
+                action = try ControlAction.parse(kind: String(path.dropFirst()), body: request.body)
             } catch .unknownAction {
                 return .text(404, "not found")
             } catch {
@@ -122,14 +144,19 @@ public final class ControlServer: @unchecked Sendable {
     }
 
     private static let decoder = JSONDecoder()
+    private static let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
+    }()
 
     /// `POST /stats` {"session", "received"}: the viewer's report for adaptive bitrate.
-    private func statsResponse(to request: HTTPRequest) -> HTTPResponse {
+    private func statsResponse(to request: HTTPRequest, hub: ViewerHub) -> HTTPResponse {
         guard let report = try? Self.decoder.decode(StatsReport.self, from: request.body), report.received >= 0 else {
             return .text(400, "bad request")
         }
         // A report for a stream that ended or that another viewer took changes nothing.
-        guard hub?.report(session: report.session, received: report.received) == true else {
+        guard hub.report(session: report.session, received: report.received) else {
             return .text(404, "unknown session")
         }
         return .json(Data("{}".utf8))

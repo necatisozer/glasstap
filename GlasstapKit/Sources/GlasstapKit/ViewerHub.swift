@@ -12,6 +12,8 @@ public final class ViewerHub: @unchecked Sendable {
         var stats: StreamStats?
         var onKeyFrameWanted: (@Sendable () -> Void)?
         var onJoin: (@Sendable () -> Void)?
+        /// Set when the iPhone's session stops. A viewer that joins after it would wait forever.
+        var closed = false
     }
 
     private let state = OSAllocatedUnfairLock(uncheckedState: State())
@@ -42,18 +44,25 @@ public final class ViewerHub: @unchecked Sendable {
         state.withLock { $0.onJoin = handler }
     }
 
-    /// Makes `connection` the only viewer. Call it after the HTTP header is sent.
-    /// `stats` is true for a viewer that reads stats messages. Returns the session of the new stream.
+    /// Makes `connection` the only viewer, and sends `header` to it first. `stats` is true for a
+    /// viewer that reads stats messages. Returns the session of the new stream, or nil if the hub is
+    /// closed: then nothing is sent, and the caller answers the request.
     @discardableResult
-    func join(_ connection: NWConnection, stats: Bool = false) -> String {
+    func join(_ connection: NWConnection, stats: Bool = false, header: Data? = nil) -> String? {
         let id = ObjectIdentifier(connection)
         // 32 random hex characters. The token guards the reports; the session only names the stream.
         let session = AccessToken.generate().value
-        let (old, onJoin, onKeyFrameWanted) = state.withLock { s in
+        let joined = state.withLock { s -> (old: [NWConnection], onJoin: (@Sendable () -> Void)?, onKeyFrameWanted: (@Sendable () -> Void)?)? in
+            // Checked under the lock, so a join and a close cannot both win.
+            guard !s.closed else { return nil }
+            // Sent under the lock too: once the viewer is in the list, another thread may send it a frame,
+            // and the header must go out before it. A send only queues the data.
+            if let header { connection.send(content: header, completion: .contentProcessed { _ in }) }
             let replaced = s.viewers.join(id, stats: stats, session: session)
             s.connections[id] = connection
             return (replaced.compactMap { s.connections.removeValue(forKey: $0) }, s.onJoin, s.onKeyFrameWanted)
         }
+        guard let (old, onJoin, onKeyFrameWanted) = joined else { return nil }
         // Tell the old viewer, so that it stops and does not take the stream back.
         for c in old {
             c.send(content: StreamMessage.encode(.replaced), completion: .contentProcessed { _ in c.cancel() })
@@ -100,6 +109,14 @@ public final class ViewerHub: @unchecked Sendable {
             log.info("viewer left")
         }
     }
+
+    /// Closes every viewer for good, when the iPhone's session stops. Later joins fail.
+    func close() {
+        state.withLock { $0.closed = true }
+        leaveAll()
+    }
+
+    var isClosed: Bool { state.withLock { $0.closed } }
 
     /// Closes every viewer, for a restart of the video listener.
     func leaveAll() {

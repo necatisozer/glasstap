@@ -134,6 +134,7 @@ public struct HTTPResponse: Sendable {
         case 400: "Bad Request"
         case 403: "Forbidden"
         case 404: "Not Found"
+        case 409: "Conflict"
         case 502: "Bad Gateway"
         default: "Status"
         }

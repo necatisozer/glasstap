@@ -6,6 +6,8 @@
 <title>glasstap</title>
 <style>
 :root {
+  /* Native controls, such as the iPhone picker, follow the dark page. */
+  color-scheme: dark;
   --bg: #0e0f11;
   --surface: #1a1c20;
   --surface-hover: #24272c;
@@ -83,6 +85,9 @@ kbd {
 }
 .typebox button { width: auto; padding: 8px 10px; }
 .hint { padding: 2px 8px 4px; color: var(--muted); font-size: 11.5px; }
+#picker { margin: 2px 4px 4px; font: inherit; }
+/* The picker group is a flex box, which would otherwise show while hidden. */
+[hidden] { display: none !important; }
 
 /* Status bar */
 .status {
@@ -117,6 +122,11 @@ kbd {
   </div>
 
   <aside class="toolbar">
+    <div class="group" id="pickerGroup" hidden>
+      <div class="group-title">iPhone</div>
+      <select id="picker" title="Choose the iPhone to show and control"></select>
+    </div>
+
     <div class="group">
       <div class="group-title">Navigate</div>
       <button id="home" title="Go to the home screen">
@@ -156,6 +166,7 @@ kbd {
 
 <footer class="status">
   <span id="dot" class="dot"></span><b id="state">Connecting…</b>
+  <span id="devname"></span>
   <span id="fps"></span>
   <span id="rate"></span>
   <span id="fmt"></span>
@@ -166,14 +177,115 @@ kbd {
 <script>
 // The app opens this page with #token=. Every request must carry it. A URL
 // fragment never goes to a server, so the token stays out of request logs.
-const TOKEN = new URLSearchParams(location.hash.slice(1)).get('token') || '';
+// &device= names one iPhone. Without it, the page uses the only iPhone, or asks which one.
+const params = new URLSearchParams(location.hash.slice(1));
+const TOKEN = params.get('token') || '';
 // The video comes on its own port, so that taps never wait behind the stream.
 // The server fills in the port. The host stays this page's own, so a tunnel works unchanged.
-const VIDEO = 'http://' + location.hostname + ':' + '__VIDEO_PORT__' + '/video';
+const VIDEO_ORIGIN = 'http://' + location.hostname + ':' + '__VIDEO_PORT__';
 const auth = { 'X-Glasstap': TOKEN };
 const $ = id => document.getElementById(id);
 const img = $('screen'), overlay = $('overlay');
 let size = { width: 393, height: 852 }, down = null, count = 0;
+
+// The chosen iPhone, as the id in its paths (/devices/<id>/…). null while there is none.
+let device = null, devices = [];
+// A new choice ends the stream of the old one.
+let generation = 0, reader = null, videoRunning = false;
+const path = p => '/devices/' + encodeURIComponent(device) + p;
+// The list entry of an id. A page can still hold the capture id after the app has learned the UDID.
+const entry = id => devices.find(d => d.udid === id || d.captureID === id);
+
+// Keep the choice in the link, so that a reload and "Take it back" stay on this iPhone.
+function remember(id) {
+  const p = new URLSearchParams(location.hash.slice(1));
+  if (id) p.set('device', id); else p.delete('device');
+  history.replaceState(null, '', '#' + p.toString());
+}
+
+// Ends the stream of the old choice. With an id, connects to that iPhone.
+function chooseDevice(id) {
+  if (id === device) return;
+  device = id;
+  remember(id);
+  showDevices();
+  generation++;
+  if (reader) reader.cancel().catch(() => {});
+  $('paused').style.display = 'none';
+  if (!id) return;
+  status('', 'Connecting…');
+  if (!videoRunning) video();
+}
+
+// The list of iPhones. The picker shows only with more than one. An unchanged list is not drawn
+// again, so that an open picker stays open. Returns true if the list changed.
+let listText = null;
+async function loadDevices() {
+  const r = await fetch('/devices', { headers: auth });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const text = await r.text();
+  if (text === listText) return false;
+  listText = text;
+  devices = JSON.parse(text);
+  showDevices();
+  return true;
+}
+function showDevices() {
+  const picker = $('picker');
+  $('pickerGroup').hidden = devices.length < 2;
+  const current = device && entry(device);
+  const options = devices.map(d => {
+    const o = document.createElement('option');
+    o.value = d.udid; o.textContent = d.name;
+    return o;
+  });
+  if (!current) options.unshift(Object.assign(document.createElement('option'), { value: '', textContent: 'Choose an iPhone', disabled: true }));
+  picker.replaceChildren(...options);
+  picker.value = current ? current.udid : '';
+  $('devname').textContent = current ? current.name : '';
+}
+$('picker').onchange = e => chooseDevice(e.target.value);
+
+// Matches the choice with the list. A learned UDID replaces the capture id, with no new connection.
+// If the chosen iPhone is gone, the only other iPhone takes its place. With more, the page asks.
+function reconcile() {
+  const current = device && entry(device);
+  if (current) {
+    if (current.udid !== device) { device = current.udid; remember(device); showDevices(); }
+    return;
+  }
+  if (devices.length === 1) return chooseDevice(devices[0].udid);
+  chooseDevice(null);
+  status('bad', devices.length ? 'Choose an iPhone' : 'No iPhone is connected');
+  $('fps').textContent = ''; $('rate').textContent = '';
+}
+
+async function syncDevices() {
+  let changed;
+  try { changed = await loadDevices(); } catch (e) {
+    if (!device) status('bad', 'Cannot list the iPhones (' + e.message + '), retrying…');
+    return false;
+  }
+  reconcile();
+  return changed;
+}
+
+// After the first read, the page reads the list only while it needs it: while no iPhone is chosen,
+// and while the picker shows. The wait grows to 10 s while the list stays the same. With one chosen iPhone, the stream
+// tells instead: it ends when the iPhone goes, and then the page reads the list again.
+async function watchDevices() {
+  // Once at the start, also with an iPhone in the link: the page needs its name and the other iPhones.
+  await syncDevices();
+  let wait = 1000;
+  for (;;) {
+    if (!device || !$('pickerGroup').hidden) {
+      wait = (await syncDevices()) ? 1000 : Math.min(wait * 2, 10000);
+    } else {
+      wait = 1000;
+    }
+    await sleep(wait);
+  }
+}
 
 // The screen size in points, from WDA. WDA may come up after this page, so retry until it answers.
 let infoLoading = null;
@@ -181,8 +293,9 @@ function refreshInfo() {
   if (infoLoading) return;
   infoLoading = (async () => {
     for (;;) {
+      if (!device) return;
       try {
-        const r = await fetch('/info', { headers: auth });
+        const r = await fetch(path('/info'), { headers: auth });
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const s = await r.json();
         size = s; $('wrap').style.aspectRatio = s.width + '/' + s.height;
@@ -205,10 +318,11 @@ function pt(e) {
            px: e.clientX - r.left, py: e.clientY - r.top };
 }
 async function send(kind, body, label) {
+  if (!device) return action('Choose an iPhone first', true);
   const t = performance.now();
   action(label + '…');
   try {
-    const r = await fetch('/' + kind, { method: 'POST', headers: auth, body: JSON.stringify(body || {}) });
+    const r = await fetch(path('/' + kind), { method: 'POST', headers: auth, body: JSON.stringify(body || {}) });
     if (!r.ok) throw new Error(await r.text());
     action(label + ' ' + ((performance.now() - t) / 1000).toFixed(2) + ' s');
   } catch (e) { action(label + ' failed: ' + e.message, true); }
@@ -269,8 +383,9 @@ const commands = {
   switcher: () => send('switcher', {}, 'app switcher'),
   wake: () => send('wake', {}, 'wake'),
   shot: () => {
+    if (!device) return action('Choose an iPhone first', true);
     action('screenshot…');
-    const a = document.createElement('a'); a.href = '/screenshot?token=' + encodeURIComponent(TOKEN); a.click();
+    const a = document.createElement('a'); a.href = path('/screenshot') + '?token=' + encodeURIComponent(TOKEN); a.click();
     setTimeout(() => action('screenshot downloaded'), 1500);
   },
 };
@@ -302,9 +417,14 @@ const sleep = ms => new Promise(f => setTimeout(f, ms));
 // The server sends stats only when the URL asks with stats=1. Skip any type not known here.
 // Every 250 ms the page reports the bytes it has received, so that the host sees the stream
 // still on the way, also in buffers it cannot see itself, such as an SSH tunnel.
+class Refused extends Error {}
+
 async function video() {
+  videoRunning = true;
   const ctx = img.getContext('2d');
   for (;;) {
+    if (!device) { videoRunning = false; return; }
+    const gen = generation, stats = path('/stats');
     let dec = null, replaced = false, session = null, received = 0, reporting = false;
     let lastReport = { received: -1, at: 0 };
     const report = setInterval(async () => {
@@ -318,19 +438,23 @@ async function video() {
       reporting = true;
       try {
         // A report that takes longer than 1 s is stale anyway. The timeout also frees the next one.
-        await fetch('/stats', { method: 'POST', headers: auth, body: JSON.stringify({ session, received }),
+        await fetch(stats, { method: 'POST', headers: auth, body: JSON.stringify({ session, received }),
                                 signal: AbortSignal.timeout(1000) });
       } catch (e) {} finally { reporting = false; }
     }, 250);
     try {
-      const r = await fetch(VIDEO + '?token=' + encodeURIComponent(TOKEN) + '&stats=1', { cache: 'no-store' });
+      const r = await fetch(VIDEO_ORIGIN + path('/video') + '?token=' + encodeURIComponent(TOKEN) + '&stats=1', { cache: 'no-store' });
+      // 404 and 409 say why, for example that the iPhone was unplugged.
+      if (r.status === 404 || r.status === 409) throw new Refused(await r.text());
       if (!r.ok) throw new Error('HTTP ' + r.status);
       // The iPhone may have changed since the last connection.
       refreshInfo();
-      const rd = r.body.getReader();
+      const rd = reader = r.body.getReader();
+      if (gen !== generation) rd.cancel().catch(() => {});
       let buf = new Uint8Array(0), off = 0, ts = 0, skip = false;
       for (;;) {
         const { value, done } = await rd.read();
+        if (gen !== generation) throw new Error('another iPhone');
         if (done) throw new Error('stream ended');
         received += value.length;
         // Copy only when a message was cut between two chunks. Otherwise read the chunk in place.
@@ -379,17 +503,26 @@ async function video() {
     } catch (e) {
       clearInterval(report);
       if (dec && dec.state !== 'closed') dec.close();
+      // Another iPhone was chosen: connect to it at once.
+      if (gen !== generation) { $('rate').textContent = ''; if (device) status('', 'Connecting…'); continue; }
       // A newer viewer took the stream. Stop here, so the two pages do not take it back and forth.
-      if (replaced) { status('bad', 'Paused'); $('fps').textContent = ''; $('rate').textContent = ''; $('paused').style.display = 'flex'; return; }
-      status('bad', 'Stream lost, retrying…');
+      if (replaced) {
+        status('bad', 'Paused'); $('fps').textContent = ''; $('rate').textContent = ''; $('paused').style.display = 'flex';
+        videoRunning = false;
+        return;
+      }
+      status('bad', e instanceof Refused ? e.message + ' Retrying…' : 'Stream lost, retrying…');
+      // The iPhone may be gone, or its id may have changed: look at the list now.
+      syncDevices();
       await sleep(1000);
     }
   }
 }
 
 setInterval(() => { if ($('paused').style.display !== 'flex') $('fps').textContent = count + ' fps'; count = 0; }, 1000);
-refreshInfo();
-video();
+const named = params.get('device');
+if (named) chooseDevice(named);
+watchDevices();
 </script>
 </body>
 </html>
