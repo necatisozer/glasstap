@@ -9,6 +9,11 @@ struct SettingsView: View {
     private var validated: Result<GlasstapSettings, SettingsProblem> { draft.validate() }
     private var usable: GlasstapSettings? { try? validated.get() }
 
+    private var defaultPrefix: String {
+        let team = draft.teamID.trimmingCharacters(in: .whitespaces)
+        return team.isEmpty ? "glasstap.wda.<team id>" : WDASigning.defaultBundlePrefix(teamID: team)
+    }
+
     var body: some View {
         Form {
             Section("Video") {
@@ -22,11 +27,21 @@ struct SettingsView: View {
             Section {
                 TextField("Viewer port", value: $draft.controlPort, format: .number.grouping(.never))
                 TextField("Video port", value: $draft.videoPort, format: .number.grouping(.never))
-                TextField("WDA URL", text: $draft.wdaURL)
             } header: {
                 Text("Network")
             } footer: {
                 Text("Both ports listen on 127.0.0.1 only. A change of port closes the open viewer.")
+                    .foregroundStyle(.secondary)
+            }
+            Section {
+                TextField("Team id", text: $draft.teamID, prompt: Text("ABCDE12345"))
+                TextField("Bundle id prefix", text: $draft.wdaBundlePrefix, prompt: Text(defaultPrefix))
+                TextField("WDA URL override", text: $draft.wdaURL, prompt: Text("Automatic"))
+            } header: {
+                Text("WebDriverAgent")
+            } footer: {
+                Text("glasstap builds WDA with your team and installs it as <prefix>.xctrunner. "
+                    + "Leave the URL empty, so that glasstap starts WDA itself. A URL is for a WDA that you run.")
                     .foregroundStyle(.secondary)
             }
             if case let .failure(problem) = validated {

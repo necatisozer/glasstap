@@ -1,0 +1,11 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -xctestrun build/Build/Products/WebDriverAgentRunner_iphoneos27.0-arm64.xctestrun -destination id=00008101-000A1B2C3D4E5F60
+
+--- xcodebuild: WARNING: Using the first of multiple matching destinations:
+{ platform:iOS, arch:arm64e, id:00008101-000A1B2C3D4E5F60, name:Test iPhone 12 Pro }
+{ platform:iOS, arch:arm64, id:00008101-000A1B2C3D4E5F60, name:Test iPhone 12 Pro }
+2026-10-06 10:12:21.186117+0300 WebDriverAgentRunner-Runner[8826:3164416] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'All tests' started at 2026-10-06 10:12:22.325.
+Test Suite 'WebDriverAgentRunner.xctest' started at 2026-10-06 10:12:22.325.
+2026-10-06 10:12:22.579455+0300 WebDriverAgentRunner-Runner[8826:3164416] ServerURLHere->http://192.0.2.10:8100<-ServerURLHere

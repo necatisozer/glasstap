@@ -28,15 +28,43 @@ Not in v0.2: a notarized DMG (v0.3), WebRTC, a hosted relay, and an MCP server.
  └──────────────────────────────────────────────────┘
 ```
 
-1. **Source.** The app downloads the WebDriverAgent source archive of one pinned release from GitHub into `~/Library/Application Support/glasstap/WebDriverAgent/<version>`. It checks the archive against a SHA-256 value in the app. The app never ships a signed WDA. WDA uses the BSD-3-Clause licence.
-2. **Build.** The app runs `xcodebuild build-for-testing` with the user's team id and the bundle id `<prefix>.glasstap.wda`. The settings hold the team id and the prefix. The app keeps the `.xctestrun` file and builds again only when the version, the team or the iOS major version changes.
-3. **Start.** The app runs `xcodebuild test-without-building -xctestrun … -destination id=<UDID>` as a child process. WDA is up when its output contains `ServerURLHere`.
-4. **Address.** The app reads `connectionProperties.tunnelIPAddress` from `xcrun devicectl device info details --json-output`. It talks to WDA on `http://[<address>]:8100`. No forwarder listens on `127.0.0.1:8100`, and the app needs no usbmuxd client and no `pymobiledevice3`.
-5. **Watch.** The app checks `GET /status` every 5 s. If the check fails three times, or the child process ends, the app starts WDA again. The waits between attempts grow to at most 5 minutes.
+1. **Source.** The app downloads the WebDriverAgent source archive of one pinned release (16.12.10) from GitHub into `~/Library/Application Support/glasstap/WebDriverAgent/<version>`. It checks the archive against a SHA-256 value in the app before it unpacks it. Then it moves the source into place in one rename, so a half-unpacked folder never appears. The app never ships a signed WDA. WDA uses the BSD-3-Clause licence.
+2. **Build.** The app runs `xcodebuild build-for-testing -destination id=<UDID> -allowProvisioningUpdates` with an xcconfig file that it writes. The file sets the user's team, automatic signing, and the bundle id of the runner target only. Xcode adds `.xctrunner`, so the runner is `<prefix>.xctrunner`. The default prefix is `glasstap.wda.<team id in lower case>`, and the settings can change it. The build goes into `wda-build/<key>`, where the key is the WDA version, the team, the prefix and the iOS major version. The app builds again only when the key changes, or once after a signing failure.
+3. **Start.** The app runs `xcodebuild test-without-building -xctestrun … -destination id=<UDID>` as a child process in a process group of its own. WDA is up when its output contains `ServerURLHere`. The app sets `NSUnbufferedIO=YES`, because xcodebuild holds back its output when it writes to a pipe.
+4. **Address.** The app reads `connectionProperties.tunnelIPAddress` from `xcrun devicectl device info details --json-output`. It talks to WDA on `http://[<address>]:8100`. The lookup before the build gives the address for the start, so the start needs no second devicectl call. The app reads the address again when the iPhone's entry in `devicectl list devices` changes, because the address changes when the iPhone is plugged in again. No forwarder listens on `127.0.0.1:8100`, and the app needs no usbmuxd client and no `pymobiledevice3`.
+5. **Watch.** The app checks `GET /status` every 5 s. If the check fails three times in a row, or the child process ends, the app starts WDA again. The waits between attempts are 2, 4, 8 … s, and at most 5 minutes. After 60 s in good health, or for a new iPhone or team, the next wait is 2 s again.
 
-Signing failures need their own message. With a free Apple account, the profile is valid for 7 days. When a start fails because of the profile, the app builds again once. If that fails too, the menu tells the user to open Xcode and sign in.
+**Stop.** The app stops the test run at quit, when the iPhone goes, when the team or the prefix changes, and before each new start. A stop sends SIGTERM to the whole process group, and SIGKILL after 5 s. The app waits until no process of the group is left, because two test runs on one iPhone conflict. A quit waits at most 10 s.
 
-The menu shows the state of each WDA: building, starting, running, restarting, or failed with the reason.
+**Crash safety.** The app writes the pid of each test run to `~/Library/Application Support/glasstap/wda-<UDID>.pid`, and deletes the file when the run ends. If the app crashes, the next start reads the file. It stops that process group only if the pid still runs `xcodebuild test-without-building` for this iPhone, because the system can give the pid to another process.
+
+**Failures.** Each kind of failure has its own result:
+
+- A signing failure at start, such as a free account's profile that expired after 7 days: the app builds again once. If the start fails again, WDA stops in the failed state, and the menu tells the user to open Xcode and sign in.
+- A build failure because the iPhone was locked, busy or still "Preparing": the app tries again after the next wait. This happens often just after the iPhone is plugged in.
+- A compile or signing error in the build, or a download with the wrong SHA-256: WDA stops in the failed state. **Restart WDA**, **Check Again** in the Setup window, a new setting or another iPhone starts it again.
+- A start that gives no `ServerURLHere` within 3 minutes, a test run that ends, or a failed devicectl lookup: the app tries again after the next wait.
+
+The menu shows the state of WDA: downloading, building, starting, running, restarting with the wait, or failed with the reason.
+
+**Device identity.** The app gets the UDID by a match of the capture device's name in `devicectl list devices`. It uses only physical devices with a connected or connectable tunnel, and the name must match exactly. One failed lookup does not stop a WDA that runs, because a lookup can fail for a short time. The app stops WDA when the capture device goes, or when a failure has lasted 15 s.
+
+The app looks the iPhone up again after an event: a device change, **Check Again**, or the app coming to the front. Requests within 300 ms give one lookup. While the iPhone is not paired or devicectl fails, the app also looks again after 5, 10, 30 and then every 60 s. Developer Mode off and a duplicate name wait for an event, because only the user can fix them.
+
+**The user's own WDA.** If the settings hold a WDA URL override, the manager starts nothing. It checks `GET /status` on that URL every 5 s and shows the same states: running, or restarting after three failed checks.
+
+**Wake check.** An iPhone with its display off sends no frames. The check waits until WDA runs, then 4 s more. If no frame came, it presses Home when SpringBoard is in front. In an app, the menu asks the user to wake the iPhone until a frame comes.
+
+## Setup window
+
+The Setup window lists what the app needs: Xcode, the team id, the iPhone, camera access and WDA. Each row shows a state and one way to fix it.
+
+- **Xcode:** `xcode-select -p` must point into an Xcode app, and that folder must hold `usr/bin/devicectl`. The Command Line Tools alone have no devicectl.
+- **Team id:** the hint names Xcode > Settings > Accounts, and the OU field of the Apple Development certificate. `security find-identity` is not used in the hint, because it shows a member id for an Apple Development certificate, not the team id.
+- **iPhone:** found on USB, paired and trusted, with Developer Mode on.
+- **WDA:** the state, and the last output lines after a failure.
+
+The window opens at the first launch, when a check starts to fail, and from **Setup…** in the menu. An iPhone problem must last 15 s first, because a newly plugged iPhone looks unpaired until its tunnel is up. The window is an AppKit `NSWindow` with SwiftUI content, because the app must open it without a click. A SwiftUI `Window` scene opens only from a view, and the menu builds its views only when the user opens it.
 
 ## More than one iPhone
 

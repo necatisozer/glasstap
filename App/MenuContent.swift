@@ -7,6 +7,9 @@ struct MenuContent: View {
 
     var body: some View {
         Text(deviceLine)
+        ForEach(model.setupProblems, id: \.self) { problem in
+            if case let .iPhone(deviceProblem) = problem { Text(deviceProblem.message) }
+        }
         Text(captureLine)
         Text(model.viewerConnected ? "Viewer connected" : "No viewer connected")
         Text(wdaLine)
@@ -26,6 +29,9 @@ struct MenuContent: View {
             Button("Restart Capture") { model.restartCapture() }
                 .keyboardShortcut("r")
         }
+        if model.wdaStatus.state != .notConfigured {
+            Button("Restart WDA") { model.restartWDA() }
+        }
         Button("Open Viewer") { model.openViewer() }
             .keyboardShortcut("o")
         Button("Copy Viewer Link") { model.copyViewerLink() }
@@ -43,6 +49,7 @@ struct MenuContent: View {
 
         Divider()
 
+        Button("Setup…") { model.openSetup() }
         Button("Settings…") {
             // A menu-bar app is not active, so its window would open behind the others.
             NSApp.activate()
@@ -70,10 +77,21 @@ struct MenuContent: View {
     }
 
     private var wdaLine: String {
-        switch model.wdaReachable {
-        case nil: "WDA: checking…"
-        case true?: "WDA reachable"
-        case false?: "WDA not reachable at \(model.settings.wdaURL.absoluteString)"
+        "WDA: " + model.wdaStatus.state.summary(teamSet: !model.settings.teamID.isEmpty)
+    }
+}
+
+extension WDAState {
+    /// One line for the menu and the Setup window.
+    func summary(teamSet: Bool) -> String {
+        switch self {
+        case .notConfigured: teamSet ? "waiting for the iPhone" : "enter your team id in Setup"
+        case .downloading: "downloading WebDriverAgent…"
+        case .building: "building (the first build takes a few minutes)…"
+        case .starting: "starting…"
+        case .running: "running"
+        case let .restarting(delay): "restarting in \(delay.components.seconds) s"
+        case let .failed(reason): "failed. \(reason)"
         }
     }
 }

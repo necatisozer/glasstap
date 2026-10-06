@@ -1,0 +1,216 @@
+{
+  "info": {
+    "arguments": [
+      "devicectl",
+      "device",
+      "info",
+      "details",
+      "--device",
+      "00008101-000A1B2C3D4E5F60",
+      "--json-output",
+      "/tmp/devicectl.json"
+    ],
+    "commandType": "devicectl.device.info.details",
+    "environment": {},
+    "jsonVersion": 5,
+    "outcome": "success",
+    "version": "642.16"
+  },
+  "result": {
+    "_deprecationNotice": {
+      "deprecatedFields": [
+        "hardwareProperties",
+        "deviceProperties",
+        "connectionProperties"
+      ],
+      "message": "The 'hardwareProperties', 'deviceProperties', 'connectionProperties' fields are deprecated and will be removed in a future release. Use the 'properties' dictionary instead.",
+      "replacement": "properties"
+    },
+    "connectionProperties": {
+      "authenticationType": "manualPairing",
+      "isMobileDeviceOnly": false,
+      "lastConnectionDate": "2026-10-06T07:07:00.000Z",
+      "localHostnames": [
+        "Test-iPhone-12-Pro.coredevice.local",
+        "11111111-2222-5333-8444-555555555555.coredevice.local",
+        "00008101-000A1B2C3D4E5F60.coredevice.local"
+      ],
+      "pairingState": "paired",
+      "potentialHostnames": [
+        "Test-iPhone-12-Pro.coredevice.local",
+        "11111111-2222-5333-8444-555555555555.coredevice.local",
+        "00008101-000A1B2C3D4E5F60.coredevice.local"
+      ],
+      "transportType": "wired",
+      "tunnelIPAddress": "fd00:1111:2222::1",
+      "tunnelState": "connected",
+      "tunnelTransportProtocol": "tcp"
+    },
+    "deviceProperties": {
+      "bootState": "booted",
+      "bootedFromSnapshot": true,
+      "bootedSnapshotName": "com.apple.os.update-0EAA0C08366E211502996BFB5CE48855904691C0E958C22BF9DC668F0184F9B7",
+      "ddiServicesAvailable": true,
+      "developerModeStatus": "enabled",
+      "hasInternalOSBuild": false,
+      "name": "Test iPhone 12 Pro",
+      "osBuildUpdate": "23F77",
+      "osVersionNumber": "26.5",
+      "rootFileSystemIsWritable": false,
+      "screenViewingURL": "devices://device/open?id=11111111-2222-5333-8444-555555555555",
+      "supportsCheckedAllocations": false
+    },
+    "hardwareProperties": {
+      "cpuType": {
+        "name": "arm64e",
+        "subType": -2147483646,
+        "type": 16777228
+      },
+      "deviceType": "iPhone",
+      "ecid": 1234567890123456,
+      "hardwareModel": "D53pAP",
+      "internalStorageCapacity": 256000000000,
+      "isProductionFused": true,
+      "marketingName": "iPhone 12 Pro",
+      "platform": "iOS",
+      "productType": "iPhone13,3",
+      "reality": "physical",
+      "serialNumber": "AAAA11112222",
+      "supportedCPUTypes": [
+        {
+          "name": "arm64e",
+          "subType": -2147483646,
+          "type": 16777228
+        },
+        {
+          "name": "arm64",
+          "subType": 0,
+          "type": 16777228
+        }
+      ],
+      "supportedDeviceFamilies": [
+        1
+      ],
+      "thinningProductType": "iPhone13,3",
+      "udid": "00008101-000A1B2C3D4E5F60"
+    },
+    "identifier": "11111111-2222-5333-8444-555555555555",
+    "properties": {
+      "connection": {
+        "authenticationType": "manualPairing",
+        "lastConnectionDate": 812963220,
+        "pairingState": "paired",
+        "screenViewingURL": {
+          "relative": "devices://device/open?id=11111111-2222-5333-8444-555555555555"
+        },
+        "state": "connected",
+        "transportType": "wired",
+        "tunnelIPAddressString": "fd00:1111:2222::1",
+        "tunnelTransportProtocol": "tcp"
+      },
+      "hardware": {
+        "cpuCount": {
+          "logicalCores": 6,
+          "packages": 1,
+          "physicalCores": 6
+        },
+        "cpuType": {
+          "subtype": 18446744071562067970,
+          "type": 16777228
+        },
+        "deviceType": "iPhone",
+        "ecid": 1234567890123456,
+        "hasActionButton": false,
+        "internalStorageCapacity": 256000000000,
+        "marketingName": "iPhone 12 Pro",
+        "platform": "iOS",
+        "productType": "iPhone13,3",
+        "reality": "physical",
+        "serialNumber": "AAAA11112222",
+        "supportedBiometrics": [
+          "faceID"
+        ],
+        "supportedCPUTypes": [
+          {
+            "subtype": 18446744071562067970,
+            "type": 16777228
+          },
+          {
+            "subtype": 0,
+            "type": 16777228
+          }
+        ],
+        "supportedDeviceFamilies": [
+          1
+        ],
+        "supportsSiri": true,
+        "thinningProductType": "iPhone13,3",
+        "udid": "00008101-000A1B2C3D4E5F60"
+      },
+      "software": {
+        "osBuildVersions": {
+          "buildVersion": {
+            "majorLetterComponent": "F",
+            "majorNumberComponent": 23,
+            "name": "23F77",
+            "revisionVersion": {
+              "components": [
+                23,
+                6,
+                77,
+                0,
+                0
+              ],
+              "originalComponentsCount": 5,
+              "stringValue": "23.6.77.0.0"
+            },
+            "trainProgram": "iOS",
+            "updateNumberComponent": 77
+          },
+          "supplementalBuildVersion": {
+            "majorLetterComponent": "F",
+            "majorNumberComponent": 23,
+            "name": "23F77",
+            "revisionVersion": {
+              "components": [
+                23,
+                6,
+                77,
+                0,
+                0
+              ],
+              "originalComponentsCount": 5,
+              "stringValue": "23.6.77.0.0"
+            },
+            "trainProgram": "iOS",
+            "updateNumberComponent": 77
+          }
+        },
+        "osVersionNumber": {
+          "components": [
+            26,
+            5,
+            0,
+            0,
+            0
+          ],
+          "originalComponentsCount": 2,
+          "stringValue": "26.5"
+        },
+        "supportsCheckedAllocations": false
+      },
+      "state": {
+        "bootState": "booted",
+        "developerModeStatus": {
+          "enabled": {
+            "mode": 1
+          }
+        },
+        "name": "Test iPhone 12 Pro",
+        "preparednessState": 7
+      }
+    },
+    "propertyDisplayNames": null,
+    "visibilityClass": "default"
+  }
+}
