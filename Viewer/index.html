@@ -58,6 +58,12 @@ body {
   padding: 32px; background: rgba(0,0,0,.72); color: var(--fg); font-size: 15px; backdrop-filter: blur(6px);
 }
 #paused button { margin-top: 14px; }
+/* A banner, not a cover: after a wake, the passcode keypad shows and must stay tappable. */
+#locked {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: none; align-items: center; gap: 10px;
+  padding: 6px 6px 6px 14px; border-radius: 999px; background: rgba(0,0,0,.78); color: var(--fg); font-size: 13px;
+  white-space: nowrap; backdrop-filter: blur(6px);
+}
 
 /* Toolbar */
 .toolbar { display: flex; flex-direction: column; gap: 8px; width: 210px; }
@@ -118,6 +124,8 @@ kbd {
       <svg id="overlay"></svg>
       <div id="paused"><div>Another viewer took the stream.<br>
         <button class="primary" onclick="location.reload()">Take it back</button></div></div>
+      <div id="locked"><span id="lockedText"></span>
+        <button class="primary" id="wakeNow">Wake screen</button></div>
     </div>
   </div>
 
@@ -187,6 +195,8 @@ const auth = { 'X-Glasstap': TOKEN };
 const $ = id => document.getElementById(id);
 const img = $('screen'), overlay = $('overlay');
 let size = { width: 393, height: 852 }, down = null, count = 0;
+// null, 'locked' (WDA can wake the screen) or 'unlock' (only the user at the iPhone can unlock it).
+let locked = null;
 
 // The chosen iPhone, as the id in its paths (/devices/<id>/…). null while there is none.
 let device = null, devices = [];
@@ -212,6 +222,7 @@ function chooseDevice(id) {
   generation++;
   if (reader) reader.cancel().catch(() => {});
   $('paused').style.display = 'none';
+  setLocked(null);
   if (!id) return;
   status('', 'Connecting…');
   if (!videoRunning) video();
@@ -390,6 +401,31 @@ const commands = {
   },
 };
 for (const id in commands) $(id).onclick = commands[id];
+$('wakeNow').onclick = commands.wake;
+
+function setLocked(mode) {
+  if (mode === locked) return;
+  locked = mode;
+  $('locked').style.display = mode ? 'flex' : 'none';
+  $('lockedText').textContent = mode === 'unlock' ? 'Unlock the iPhone to control it.' : 'The iPhone is locked.';
+  $('wakeNow').hidden = mode !== 'locked';
+}
+// Ask every 3 s while the page shows. The frames cannot tell: a locked iPhone can send none, or keep sending
+// its last app screen. Also before the first frame, which a dark display never sends.
+async function watchLock() {
+  for (;;) {
+    await sleep(3000);
+    if (!device || document.hidden || $('paused').style.display === 'flex') continue;
+    const asked = device;
+    try {
+      const r = await fetch(path('/locked'), { headers: auth, signal: AbortSignal.timeout(5000) });
+      // Another iPhone may have been chosen while the answer came.
+      if (!r.ok || asked !== device) continue;
+      const s = await r.json();
+      setLocked(!s.locked ? null : s.canWake ? 'locked' : 'unlock');
+    } catch (e) {}
+  }
+}
 
 const txt = $('txt');
 $('send').onclick = () => {
@@ -523,6 +559,7 @@ setInterval(() => { if ($('paused').style.display !== 'flex') $('fps').textConte
 const named = params.get('device');
 if (named) chooseDevice(named);
 watchDevices();
+watchLock();
 </script>
 </body>
 </html>

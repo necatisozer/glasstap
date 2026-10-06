@@ -78,6 +78,7 @@ public final class ControlServer: @unchecked Sendable {
             case let .failure(error): return .text(error.status, error.message)
             }
             if rest == "/stats" { return statsResponse(to: request, hub: route.hub) }
+            if rest == "/locked" { return await lockResponse(route) }
             do {
                 return try await wdaResponse(to: request, path: rest, wda: route.client)
             } catch {
@@ -92,7 +93,7 @@ public final class ControlServer: @unchecked Sendable {
     /// The paths of one iPhone, after `/devices/<id>`.
     static func isAction(method: String, path: String) -> Bool {
         switch method {
-        case "GET": path == "/info" || path == "/screenshot"
+        case "GET": path == "/info" || path == "/screenshot" || path == "/locked"
         case "POST": path == "/stats" || ControlAction.kinds.contains(String(path.dropFirst()))
         default: false
         }
@@ -119,6 +120,31 @@ public final class ControlServer: @unchecked Sendable {
         default:
             return .text(404, "not found")
         }
+    }
+
+    private struct LockState: Encodable {
+        let locked: Bool
+        /// False when no WDA runs: only the user at the iPhone can unlock it.
+        let canWake: Bool
+    }
+
+    /// `GET /locked`. Without a running WDA, the only known lock is a WDA start that waits for the unlock.
+    private func lockResponse(_ route: DeviceRoute) async -> HTTPResponse {
+        let state: LockState
+        switch route.current.wda {
+        case WDAState.waitingForUnlock.word:
+            state = LockState(locked: true, canWake: false)
+        case WDAState.running.word:
+            do {
+                state = LockState(locked: try await route.client.isLocked(), canWake: true)
+            } catch {
+                log.error("GET /locked failed: \(String(describing: error), privacy: .public)")
+                return .text(502, String(describing: error))
+            }
+        default:
+            state = LockState(locked: false, canWake: false)
+        }
+        return .json((try? Self.encoder.encode(state)) ?? Data("{}".utf8))
     }
 
     private struct StatsReport: Decodable {

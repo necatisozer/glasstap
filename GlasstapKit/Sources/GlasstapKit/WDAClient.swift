@@ -115,6 +115,15 @@ public actor WDAClient {
         try await currentSession().size
     }
 
+    /// True while the iPhone shows its lock screen or has its display off. WDA answers `{"value": true}`.
+    public func isLocked() async throws -> Bool {
+        // Shorter than the 5 s of the viewer page, so that a slow answer does not outlive the question.
+        guard let locked = try await call(.locked, timeout: 4)["value"] as? Bool else {
+            throw ReplyError(description: "WDA gave no lock state")
+        }
+        return locked
+    }
+
     /// A full-resolution PNG of the screen.
     public func screenshot() async throws -> Data {
         guard let base64 = try await call(.screenshot)["value"] as? String,
