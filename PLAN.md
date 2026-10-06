@@ -103,7 +103,7 @@ A spike is a short test that decides the design. Do not start a milestone before
 
 | Milestone | Content | Done when |
 |---|---|---|
-| **v0.1** Package what works | Menu-bar app: device discovery, capture, encoder, HTTP server, viewer page. WDA is a prerequisite that the user starts. | A new user installs the DMG, starts WDA from the docs, and sees and taps the iPhone on the same Mac. |
+| **v0.1** Package what works | Menu-bar app: device discovery, capture, encoder, HTTP server, viewer page. WDA is a prerequisite that the user starts. See [the v0.1 design](docs/design-v0.1.md). | A developer builds the app from Xcode, starts WDA from the docs, and sees and taps the iPhone on the same Mac. |
 | **S1** Start WDA with Xcode tools | `xcodebuild test-without-building` with a WDA `.xctestrun` on iOS 26. | WDA answers `/status` with no `pymobiledevice3`. |
 | **S2** Reach port 8100 | A native usbmuxd client, or the CoreDevice tunnel address of iOS 17+. Capture a real usbmuxd exchange before you write the client. | A tap reaches WDA with no `pymobiledevice3`. |
 | **S3** Map capture device to UDID | The capture `uniqueID` is not the UDID. Find the link between them. | With two iPhones on USB, each stream matches the right WDA. |
