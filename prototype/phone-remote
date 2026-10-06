@@ -1,0 +1,287 @@
+#!/bin/bash
+# Start the iPhone remote in one command: WDA on the remote Mac for taps, the
+# screen stream, the SSH tunnels, and the page on http://127.0.0.1:9300/.
+#
+# Usage: phone-remote [ssh-host]        (default host: mac-mini)
+# Ctrl-C stops only what this script started. A WDA that was already
+# running (for example, another session's) stays running.
+#
+# PHONE_REMOTE_MODE picks the screen stream:
+#   video (default): iPhoneCapture.app captures the screen over USB and sends
+#                    H.265 or H.264, about 30 fps. The first run needs a click
+#                    on Allow for camera access on the remote Mac's screen.
+#   jpeg:            WDA screenshots through phone_frame_relay.py, about 9 fps.
+set -u
+
+HOST="${1:-mac-mini}"
+MODE="${PHONE_REMOTE_MODE:-video}"
+RUNNER="${PHONE_REMOTE_RUNNER:-dev.uiautomation.wda.xctrunner}"
+# video mode
+CODEC="${PHONE_REMOTE_CODEC:-hevc}"         # hevc (H.265) or h264
+VWIDTH="${PHONE_REMOTE_VIDEO_WIDTH:-590}"   # video width, px (native is 1180)
+BITRATE="${PHONE_REMOTE_BITRATE:-800000}"   # bit/s; the uplink carries about 1.6 Mbit/s
+VFPS="${PHONE_REMOTE_VIDEO_FPS:-30}"
+# jpeg mode
+SCALE="${PHONE_REMOTE_SCALE:-50}"   # WDA stream size, percent of native
+FPS="${PHONE_REMOTE_FPS:-10}"       # WDA stream frames per second
+WIDTH="${PHONE_REMOTE_WIDTH:-330}"  # width of the frames sent to this Mac, px
+JPEG="${PHONE_REMOTE_JPEG:-45}"     # JPEG quality of those frames, 1-100
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+# WDA allows any origin and has no authentication. So its tunnel ends in a
+# Unix socket in a private folder, which no website and no other user can reach.
+LOCAL_DIR="$HOME/.tapstream"
+SOCK="$LOCAL_DIR/wda.sock"
+wda_curl() { curl -s --unix-socket "$SOCK" "$@"; }
+# A new random token for each run. The page, the control server and the
+# stream servers all require it.
+TOKEN="$(openssl rand -hex 16)"
+LAUNCHER=""
+STARTED=""
+TUNNEL_PID=""
+SERVER_PID=""
+
+case "$MODE" in
+  video) STREAM_PORT=9170; SOURCE=iphone_capture.swift ;;
+  jpeg) STREAM_PORT=9150; SOURCE=phone_frame_relay.py ;;
+  *) echo "error: PHONE_REMOTE_MODE must be video or jpeg" >&2; exit 1 ;;
+esac
+
+cleanup() {
+  [ -n "$SERVER_PID" ] && kill "$SERVER_PID" 2>/dev/null
+  [ -n "$TUNNEL_PID" ] && kill $TUNNEL_PID 2>/dev/null
+  if [ -n "$STARTED" ]; then
+    echo "Stopping on $HOST: $STARTED"
+    local cmd=""
+    for s in $STARTED; do
+      case "$s" in
+        started-wda) cmd="$cmd pkill -f 'dvt xcuitest';" ;;
+        started-fwd8100) cmd="$cmd pkill -f 'usbmux forward 8100 8100';" ;;
+        started-fwd9100) cmd="$cmd pkill -f 'usbmux forward 9100 9100';" ;;
+        started-relay) cmd="$cmd pkill -f phone_frame_relay.py;" ;;
+        started-capture) cmd="$cmd pkill -f iPhoneCapture.app;" ;;
+      esac
+    done
+    ssh "$HOST" "$cmd" 2>/dev/null
+  fi
+  ssh "$HOST" 'rm -f ~/.tapstream/token' 2>/dev/null
+  rm -f "$SOCK" ${LAUNCHER:+"$LAUNCHER"}
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+mkdir -p -m 700 "$LOCAL_DIR" && chmod 700 "$LOCAL_DIR"
+if pgrep -f "$SOCK:localhost:8100" >/dev/null; then
+  echo "error: another phone-remote is running. Stop it first: pkill -f phone-remote" >&2
+  exit 1
+fi
+for port in 9200 9300; do
+  if lsof -nP -iTCP:$port -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "error: local port $port is in use. Stop the old remote first:" >&2
+    echo "  pkill -f phone-remote; pkill -f phone_remote.py; pkill -f '127.0.0.1:9200:'" >&2
+    exit 1
+  fi
+done
+
+echo "Starting WDA and the $MODE stream on $HOST…"
+# Keep the files in a private folder. In the shared /tmp, another user could
+# create the folder first and replace the source that this script builds and runs.
+ssh "$HOST" "mkdir -p -m 700 ~/.tapstream && chmod 700 ~/.tapstream && cat > ~/.tapstream/$SOURCE" < "$HERE/$SOURCE" || exit 1
+printf '%s' "$TOKEN" | ssh "$HOST" 'umask 077 && cat > ~/.tapstream/token' || exit 1
+OUT="$(ssh "$HOST" bash -s -- "$RUNNER" "$MODE" "$SCALE" "$FPS" "$WIDTH" "$JPEG" \
+  "$CODEC" "$VWIDTH" "$BITRATE" "$VFPS" <<'EOF'
+RUNNER="$1"; MODE="$2"; SCALE="$3"; FPS="$4"; WIDTH="$5"; JPEG="$6"
+CODEC="$7"; VWIDTH="$8"; BITRATE="$9"; VFPS="${10}"
+P=$(ls -d "$HOME"/Library/Python/*/bin/pymobiledevice3 2>/dev/null | head -1)
+[ -n "$P" ] || P=$(command -v pymobiledevice3)
+[ -n "$P" ] || { echo "error: pymobiledevice3 not found"; exit 1; }
+L="$HOME/.tapstream"
+wda_up() { curl -s --max-time 3 -o /dev/null http://localhost:8100/status; }
+if ! wda_up; then
+  if ! pgrep -f "usbmux forward 8100 8100" >/dev/null; then
+    nohup "$P" usbmux forward 8100 8100 > $L/fwd8100.log 2>&1 < /dev/null &
+    echo started-fwd8100
+  fi
+  if ! pgrep -f "dvt xcuitest" >/dev/null; then
+    nohup "$P" developer dvt xcuitest "$RUNNER" > $L/wda.log 2>&1 < /dev/null &
+    echo started-wda
+  fi
+  for i in $(seq 1 30); do sleep 2; wda_up && break; done
+  if ! wda_up; then
+    echo "error: WDA did not answer on port 8100. Is the iPhone connected and unlocked?"
+    tail -5 $L/wda.log
+    exit 1
+  fi
+else
+  echo "reusing-wda"
+fi
+
+if [ "$MODE" = jpeg ]; then
+  if ! pgrep -f "usbmux forward 9100 9100" >/dev/null; then
+    nohup "$P" usbmux forward 9100 9100 > $L/fwd9100.log 2>&1 < /dev/null &
+    echo started-fwd9100
+  fi
+  # A smaller WDA stream makes less work for the relay. These WDA settings
+  # apply to every stream client and last until WDA restarts.
+  SID=$(curl -s http://localhost:8100/status | python3 -c 'import sys,json; print(json.load(sys.stdin).get("sessionId") or "")')
+  if [ -n "$SID" ]; then
+    curl -s --max-time 10 -X POST -H 'Content-Type: application/json' \
+      -d "{\"settings\":{\"mjpegScalingFactor\":$SCALE,\"mjpegServerFramerate\":$FPS}}" \
+      "http://localhost:8100/session/$SID/appium/settings" >/dev/null
+  fi
+  # The mobile uplink carries about 200 KB/s, far less than the stream. The relay
+  # serves only the newest frame on request, so frames never queue on the link.
+  python3 -c 'import PIL' 2>/dev/null || { echo "error: python3 on this host has no Pillow (PIL)"; exit 1; }
+  pkill -f phone_frame_relay.py
+  nohup python3 $L/phone_frame_relay.py 9150 "$WIDTH" "$JPEG" > $L/relay.log 2>&1 < /dev/null &
+  echo started-relay
+  exit 0
+fi
+
+# Video mode. The capture runs as an app in the desktop session, because the
+# camera permission (TCC) cannot be granted to a process started over SSH.
+A="$HOME/Applications/iPhoneCapture.app"
+SUMFILE="$HOME/.iphone-capture-source.sha256"
+SUM=$(shasum -a 256 $L/iphone_capture.swift | cut -c1-64)
+if [ ! -x "$A/Contents/MacOS/iPhoneCapture" ] || [ "$(cat "$SUMFILE" 2>/dev/null)" != "$SUM" ]; then
+  echo "Building iPhoneCapture.app…" >&2
+  mkdir -p "$A/Contents/MacOS"
+  cat > "$A/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>com.necatisozer.iphonecapture</string>
+<key>CFBundleName</key><string>iPhone Capture</string>
+<key>CFBundleExecutable</key><string>iPhoneCapture</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleVersion</key><string>1</string>
+<key>LSUIElement</key><true/>
+<key>NSCameraUsageDescription</key><string>Captures the screen of the iPhone connected over USB, to stream it to a remote viewer.</string>
+</dict></plist>
+PLIST
+  pkill -f iPhoneCapture.app
+  if ! xcrun swiftc -O -swift-version 5 $L/iphone_capture.swift -o "$A/Contents/MacOS/iPhoneCapture" > $L/build.log 2>&1; then
+    echo "error: the build of iPhoneCapture.app failed"
+    grep error $L/build.log | head -10
+    exit 1
+  fi
+  # Sign with the development certificate, so that the camera approval stays
+  # valid after a rebuild. Sign in the desktop session through launchd, because
+  # the login keychain is locked in an SSH session.
+  IDENT=$(security find-identity -v -p codesigning | awk '/Apple Development/ {print $2; exit}')
+  [ -n "$IDENT" ] || { echo "error: no Apple Development certificate on this Mac"; exit 1; }
+  LABEL=com.necatisozer.iphonecapture.sign
+  cat > $L/sign.plist <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>Label</key><string>$LABEL</string>
+<key>ProgramArguments</key><array><string>/usr/bin/codesign</string><string>--force</string>
+<string>-s</string><string>$IDENT</string><string>$A</string></array>
+<key>RunAtLoad</key><true/>
+<key>StandardOutPath</key><string>$L/sign.log</string>
+<key>StandardErrorPath</key><string>$L/sign.log</string>
+</dict></plist>
+PLIST
+  launchctl bootout gui/$(id -u)/$LABEL 2>/dev/null
+  launchctl bootstrap gui/$(id -u) $L/sign.plist
+  for i in $(seq 1 20); do
+    codesign -dr - "$A" 2>&1 | grep -q "Apple Development" && break
+    sleep 1
+  done
+  launchctl bootout gui/$(id -u)/$LABEL 2>/dev/null
+  if ! codesign -dr - "$A" 2>&1 | grep -q "Apple Development"; then
+    echo "error: signing iPhoneCapture.app failed"
+    cat $L/sign.log
+    exit 1
+  fi
+  echo "$SUM" > "$SUMFILE"
+fi
+pkill -f iPhoneCapture.app
+rm -f $L/capture.log
+open -n "$A" --stdout $L/capture.log --stderr $L/capture.log --args \
+  --codec "$CODEC" --width "$VWIDTH" --bitrate "$BITRATE" --fps "$VFPS" --port 9170
+echo started-capture
+for i in $(seq 1 90); do
+  grep -q -e "capture running" -e "error" $L/capture.log 2>/dev/null && break
+  if [ $i = 5 ] && grep -q "waiting for camera permission" $L/capture.log 2>/dev/null; then
+    echo "First run: click Allow for iPhone Capture on this Mac's screen." >&2
+  fi
+  sleep 1
+done
+if ! grep -q "capture running" $L/capture.log 2>/dev/null; then
+  echo "error: iPhoneCapture.app did not start"
+  cat $L/capture.log
+  exit 1
+fi
+EOF
+)"
+RC=$?
+STARTED="$(echo "$OUT" | grep '^started-' | tr '\n' ' ')"
+echo "$OUT" | grep -v -e '^started-' -e '^reusing-wda' -e '^$'
+[ $RC -ne 0 ] && exit 1
+echo "$OUT" | grep -q reusing-wda && echo "WDA was already running on $HOST. It stays running when you stop."
+
+# Use two SSH connections, so that taps never wait behind the screen stream.
+# -q hides a harmless TCP_NODELAY warning for each connection on the socket.
+ssh -q -n -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 \
+  -o StreamLocalBindUnlink=yes -o StreamLocalBindMask=0177 -L "$SOCK:localhost:8100" "$HOST" &
+TUNNEL_PID=$!
+ssh -n -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 \
+  -L 127.0.0.1:9200:localhost:$STREAM_PORT "$HOST" &
+TUNNEL_PID="$TUNNEL_PID $!"
+for i in $(seq 1 15); do
+  wda_curl --max-time 3 -o /dev/null http://localhost/status && break
+  sleep 1
+done
+if ! wda_curl --max-time 3 -o /dev/null http://localhost/status; then
+  echo "error: the SSH tunnel to $HOST did not come up." >&2
+  exit 1
+fi
+
+# Wake the screen if the phone is locked. A passcode, if any, stays for you to enter.
+if wda_curl --max-time 5 http://localhost/wda/locked | grep -q '"value" : true'; then
+  wda_curl --max-time 20 -X POST -H 'Content-Type: application/json' -d '{}' \
+    http://localhost/wda/unlock >/dev/null
+fi
+
+# The capture sends no frames while the display is off, and WDA can report
+# "not locked" then. If no frame comes and the lock or home screen is in
+# front, press Home: it wakes the lock screen and does nothing on the home screen.
+if [ "$MODE" = video ]; then
+  frame_seen() { ssh "$HOST" 'grep -q "encoder ready" ~/.tapstream/capture.log'; }
+  for i in 1 2 3 4; do frame_seen && break; sleep 1; done
+  if ! frame_seen; then
+    SID=$(wda_curl --max-time 5 http://localhost/status | python3 -c 'import sys,json; print(json.load(sys.stdin).get("sessionId") or "")')
+    # A freshly started WDA has no session yet.
+    [ -n "$SID" ] || SID=$(wda_curl --max-time 30 -X POST -H 'Content-Type: application/json' \
+      -d '{"capabilities":{"alwaysMatch":{"platformName":"iOS"}}}' http://localhost/session |
+      python3 -c 'import sys,json; print(json.load(sys.stdin).get("sessionId") or "")')
+    if [ -n "$SID" ] && wda_curl --max-time 10 "http://localhost/session/$SID/wda/activeAppInfo" | grep -q '"com.apple.springboard"'; then
+      echo "No picture from the iPhone. Pressing Home to wake the display…"
+      wda_curl --max-time 20 -X POST -H 'Content-Type: application/json' -d '{"name":"home"}' \
+        "http://localhost/session/$SID/wda/pressButton" >/dev/null
+    else
+      echo "No picture from the iPhone yet. If its display is off, wake it." >&2
+    fi
+  fi
+fi
+
+if [ "$MODE" = video ]; then
+  PHONE_REMOTE_TOKEN="$TOKEN" PHONE_REMOTE_WDA_SOCKET="$SOCK" \
+    PHONE_REMOTE_VIDEO="http://127.0.0.1:9200/video" python3 "$HERE/phone_remote.py" &
+else
+  PHONE_REMOTE_TOKEN="$TOKEN" PHONE_REMOTE_WDA_SOCKET="$SOCK" python3 "$HERE/phone_remote.py" &
+fi
+SERVER_PID=$!
+for i in $(seq 1 10); do
+  curl -s --max-time 2 -o /dev/null http://127.0.0.1:9300/ && break
+  sleep 0.5
+done
+# Open the page through a private launcher file, so that the token never shows
+# in a command line (other users can read those with ps) or in this output.
+LAUNCHER="$LOCAL_DIR/open.html"
+( umask 077 && printf '<meta charset="utf-8"><script>location.replace("http://127.0.0.1:9300/#token=%s")</script>\n' "$TOKEN" > "$LAUNCHER" )
+open "$LAUNCHER"
+echo "Remote is open ($MODE mode). To open it again, open $LAUNCHER. Press Ctrl-C to stop."
+wait "$SERVER_PID"
