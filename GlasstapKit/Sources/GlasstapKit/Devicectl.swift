@@ -8,6 +8,10 @@ public struct CoreDevice: Sendable, Equatable {
     public var isPhysical: Bool
     /// "connected" while the CoreDevice tunnel is up.
     public var tunnelState: String?
+    /// "wired" for USB, "localNetwork" for Wi-Fi.
+    public var transportType: String?
+    /// "paired" after the user trusted this Mac.
+    public var pairingState: String?
     /// "enabled" when Developer Mode is on. Simulators have none.
     public var developerModeStatus: String?
     public var osVersion: String?
@@ -15,14 +19,23 @@ public struct CoreDevice: Sendable, Equatable {
     public var tunnelIPAddress: String?
 
     public init(udid: String, name: String, isPhysical: Bool, tunnelState: String? = nil,
+                transportType: String? = nil, pairingState: String? = nil,
                 developerModeStatus: String? = nil, osVersion: String? = nil, tunnelIPAddress: String? = nil) {
         self.udid = udid
         self.name = name
         self.isPhysical = isPhysical
         self.tunnelState = tunnelState
+        self.transportType = transportType
+        self.pairingState = pairingState
         self.developerModeStatus = developerModeStatus
         self.osVersion = osVersion
         self.tunnelIPAddress = tunnelIPAddress
+    }
+
+    /// Whether glasstap can use the iPhone. A paired iPhone on USB counts while its tunnel is down:
+    /// the tunnel of an idle iPhone stays "disconnected" until a devicectl command or xcodebuild uses it.
+    public var isReachable: Bool {
+        Devicectl.usableTunnelStates.contains(tunnelState ?? "") || (transportType == "wired" && pairingState == "paired")
     }
 
     public var osMajorVersion: Int? {
@@ -61,7 +74,7 @@ public enum Devicectl {
         public let description: String
     }
 
-    /// The tunnel states in which the iPhone can be reached.
+    /// The tunnel states in which the iPhone can be reached over any transport.
     static let usableTunnelStates: Set<String> = ["connected", "connectable"]
 
     /// The devices of `devicectl list devices --json-output`.
@@ -112,6 +125,8 @@ public enum Devicectl {
             name: name,
             isPhysical: reality == "physical",
             tunnelState: connection?["tunnelState"] as? String ?? newConnection?["state"] as? String,
+            transportType: connection?["transportType"] as? String ?? newConnection?["transportType"] as? String,
+            pairingState: connection?["pairingState"] as? String ?? newConnection?["pairingState"] as? String,
             developerModeStatus: deviceProps?["developerModeStatus"] as? String ?? newDeveloperMode,
             osVersion: deviceProps?["osVersionNumber"] as? String
                 ?? dict(newSoftware?["osVersionNumber"])?["stringValue"] as? String,
@@ -122,9 +137,7 @@ public enum Devicectl {
     /// The CoreDevice of a capture device. The capture `uniqueID` is not the UDID and does not
     /// appear in the devicectl data, so the name is the only link, and it must match exactly.
     public static func match(captureName: String, in devices: [CoreDevice]) -> Result<CoreDevice, DeviceProblem> {
-        let reachable = devices.filter {
-            $0.isPhysical && usableTunnelStates.contains($0.tunnelState ?? "") && $0.name == captureName
-        }
+        let reachable = devices.filter { $0.isPhysical && $0.isReachable && $0.name == captureName }
         guard let device = reachable.first else { return .failure(.notPaired) }
         guard reachable.count == 1 else { return .failure(.duplicateName(captureName)) }
         guard device.developerModeStatus == "enabled" else { return .failure(.developerModeOff(captureName)) }
