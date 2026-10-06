@@ -1,0 +1,6 @@
+// Signing for development builds. Xcode signs automatically with your Apple
+// Development certificate, so the camera approval stays valid after a rebuild.
+// Put your team in Local.xcconfig (see Local.xcconfig.example). It is not committed.
+CODE_SIGN_STYLE = Automatic
+
+#include? "Local.xcconfig"

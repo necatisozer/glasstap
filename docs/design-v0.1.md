@@ -61,6 +61,7 @@ These rules come from four security reviews of the prototype:
 5. The control listener rejects a POST with a foreign `Origin`. The video listener allows only the viewer's origin in CORS. It also refuses requests that the browser marks `Sec-Fetch-Site: cross-site`.
 6. The browser never reaches WDA. The app is the only WDA client, and it offers only a fixed set of actions: tap, swipe, type, Home, app switcher, wake and screenshot.
 7. The app opens the viewer with `NSWorkspace.open(_:)`, so the token never appears in a command line. "Copy viewer link" puts the link on the clipboard.
+8. The app also keeps the link in a private file, `~/Library/Application Support/glasstap/viewer-link`. The folder has mode 700 and the file has mode 600, so other local users cannot read the token. A viewer on another Mac reads the link from this file over SSH, because "Copy viewer link" works only at the host's screen. The app writes the file again when the viewer port changes, and deletes it at quit.
 
 v0.1 accepts one known risk: WDA's forwarder answers on the host's `127.0.0.1:8100`, so any local user on the host can control the iPhone. v0.2 replaces the forwarder with a private Unix socket.
 
