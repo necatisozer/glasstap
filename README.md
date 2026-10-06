@@ -4,7 +4,7 @@ glasstap shows a physical iPhone live in a browser and lets you tap, swipe and t
 
 glasstap gets the screen from the USB screen-capture device of macOS (the QuickTime route) and encodes it with the hardware H.265 encoder. On a 1.6 Mbit/s uplink, the prototype shows about 30 fps at 590 × 1278. WebDriverAgent (WDA) sends the taps, swipes and text.
 
-> **Status: v0.2 in progress, early.** glasstap is a menu-bar app that you build from source. It builds, starts and watches WebDriverAgent itself. [`PLAN.md`](PLAN.md) describes the path to a signed release, and [`docs/design-v0.2.md`](docs/design-v0.2.md) describes this version.
+> **Status: v0.2.0, early.** glasstap is a menu-bar app that you build from source. It builds, starts and watches WebDriverAgent itself. [`CHANGELOG.md`](CHANGELOG.md) lists what changed and what is not tested yet. [`PLAN.md`](PLAN.md) describes the path to a signed release, and [`docs/design-v0.2.md`](docs/design-v0.2.md) describes this version.
 
 ## How it works
 
