@@ -54,7 +54,7 @@ In the browser: WebCodecs with H.265 decoding, for example Chrome or Safari on m
 
 At the first start, glasstap downloads WebDriverAgent (WDA) 16.12.10 from GitHub and checks its SHA-256. It then builds WDA with your team, and starts it on the iPhone. The first build takes a few minutes. The menu shows each step. If WDA stops answering, or the iPhone is unplugged and plugged in again, glasstap starts WDA again.
 
-The Setup window lists what glasstap needs and what is missing. It opens at the first launch and when a check fails. **Setup…** in the menu opens it. **Settings** has the codec, size, bitrate, frame rate, ports, the team id, the WDA bundle id prefix and a WDA URL override for a WDA that you run yourself.
+The Setup window lists what glasstap needs and what is missing. It opens at the first launch and when a check fails. **Setup…** in the menu opens it. **Settings** has the codec, size, bitrate, frame rate, the listen address, ports, the team id, the WDA bundle id prefix and a WDA URL override for a WDA that you run yourself.
 
 glasstap keeps the WDA source and its builds in `~/Library/Application Support/glasstap/`.
 
@@ -72,7 +72,11 @@ The WDA URL override in the settings is for one iPhone. While more than one iPho
 
 ## View from another Mac
 
-The app listens only on 127.0.0.1. To view from another Mac, forward both ports over SSH. Use two separate SSH connections. On one shared connection, taps wait behind the video:
+By default, the app listens only on 127.0.0.1. There are two ways to view from another computer: an SSH tunnel, or another listen address.
+
+### SSH tunnel
+
+Forward both ports over SSH. Use two separate SSH connections. On one shared connection, taps wait behind the video:
 
 ```bash
 ssh -N -L 9300:127.0.0.1:9300 host-mac &
@@ -90,6 +94,18 @@ ssh host-mac 'cat "$HOME/Library/Application Support/glasstap/viewer-link"'
 
 The link holds the access token of the current app launch. Only your user can read the file, and the app deletes it when it quits.
 
+### Another listen address
+
+In **Settings > Network > Listen on**, choose an address of the host Mac instead of **This Mac only (127.0.0.1)**. The list marks a Tailscale address. Then click **Apply**, read the warning, and confirm. Both ports then listen on that address only, never on all addresses. The viewer link and the link file use that address.
+
+**Use the Tailscale address.** Tailscale encrypts the traffic, and only the devices in your tailnet can reach the address.
+
+> **Warning:** On any other address, glasstap does not encrypt the traffic. Anyone on that network who gets the viewer link can see and control the iPhone. Use such an address only on a network that you trust.
+
+Open the link with the address itself, for example `http://100.101.102.103:9300/#token=…`. The app accepts only 127.0.0.1, `localhost` and the chosen address as the host, so a host name such as a MagicDNS name does not work.
+
+If the address goes away, for example when Tailscale or Wi-Fi is off, the app listens on 127.0.0.1 again, and the menu tells you. When the address comes back, the app listens on it again. If the app cannot listen on the address, it tries again a few times, and then listens on 127.0.0.1 and tells you why. Each change closes the open viewers and makes a new viewer link.
+
 ## The prototype
 
 [`prototype/`](prototype/) keeps the scripts that came before the app, as a reference. `phone-remote` starts WDA with `pymobiledevice3`, a capture app and the tunnels for one fixed setup. The app does not use `pymobiledevice3`. See the comments in each file.
@@ -103,7 +119,9 @@ The link holds the access token of the current app launch. Only your user can re
 
 ## Security
 
-- Both ports listen only on 127.0.0.1. Every request needs the token of the current launch, except the viewer page, which holds no secret.
+- By default, both ports listen only on 127.0.0.1. If you choose another listen address, they listen on that one address only. Every request needs the token of the current launch, except the viewer page, which holds no secret.
+- The token goes over the network unencrypted, unless the network is Tailscale or an SSH tunnel. On another network, anyone who can read the traffic can take the token.
+- Each change of the listen address or of a port makes a new token, also a fallback to 127.0.0.1 and the move back. The app writes the link file again and closes the open viewers. So an old link is of no use, also if another local user binds the old address and port later. After a change, copy the link again or read the link file again.
 - The browser never talks to WDA. The app is the only WDA client and offers only taps, swipes, text, Home, the app switcher, wake and screenshots.
 - The app talks to WDA on the iPhone's CoreDevice tunnel address. No forwarder listens on the host Mac's `127.0.0.1:8100`.
 - **Known risks:** WDA on the iPhone also answers on the iPhone's Wi-Fi address, so anyone on that network can control the iPhone. Use the iPhone only on a network that you trust. Other local users on the host Mac may also reach the tunnel address. This is not tested yet. [`PLAN.md`](PLAN.md#risks) lists the planned fixes.

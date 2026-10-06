@@ -47,72 +47,79 @@ public enum RouteError: Error, Equatable, Sendable {
     }
 }
 
-/// Something that the paths can name: by its UDID, or by its capture id until the UDID is known.
-public protocol DeviceKeyed {
-    /// The capture `uniqueID`, known from the start.
-    var captureID: String { get }
-    var udid: String? { get }
-}
+/// What the listeners need of one iPhone. Its session owns it and updates it on its own changes.
+/// The listeners read it on their own queues, so a lock guards the parts that change.
+public final class DeviceRoute: Sendable {
+    /// The parts that change, as `GET /devices` lists them.
+    public struct Info: Equatable, Sendable, Encodable {
+        public let captureID: String
+        public var udid: String?
+        public var name: String
+        /// One word for the capture, such as "running".
+        public var state: String
+        /// One word for WDA, such as "running".
+        public var wda: String
 
-extension DeviceKeyed {
-    /// The id in the paths and in the viewer link.
-    public var key: String { udid ?? captureID }
+        /// The id in the paths and in the viewer link: the UDID once devicectl names the iPhone,
+        /// and the capture id until then.
+        public var key: String { udid ?? captureID }
+
+        private enum CodingKeys: String, CodingKey { case udid, captureID, name, state, wda }
+
+        /// `udid` is the key, so that a page always has an id for the paths.
+        public func encode(to encoder: any Swift.Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(key, forKey: .udid)
+            try c.encode(captureID, forKey: .captureID)
+            try c.encode(name, forKey: .name)
+            try c.encode(state, forKey: .state)
+            try c.encode(wda, forKey: .wda)
+        }
+    }
+
+    public let captureID: String
+    public let hub: ViewerHub
+    public let client: WDAClient
+    private let info: OSAllocatedUnfairLock<Info>
+
+    public init(captureID: String, name: String, hub: ViewerHub, client: WDAClient, udid: String? = nil,
+                state: String = "idle", wda: String = WDAState.notConfigured.word) {
+        self.captureID = captureID
+        self.hub = hub
+        self.client = client
+        info = OSAllocatedUnfairLock(initialState: Info(captureID: captureID, udid: udid, name: name, state: state, wda: wda))
+    }
+
+    public var current: Info { info.withLock { $0 } }
+    public var udid: String? { current.udid }
+    public var key: String { current.key }
+
+    func setUDID(_ udid: String) { info.withLock { $0.udid = udid } }
+    func setName(_ name: String) { info.withLock { $0.name = name } }
+    func setState(_ state: String) { info.withLock { $0.state = state } }
+    func setWDA(_ wda: String) { info.withLock { $0.wda = wda } }
 }
 
 public enum DeviceRouting {
-    /// The item that `id` names. With no id, the only item. The UDID wins over the capture id,
+    /// The route that `id` names. With no id, the only route. The UDID wins over the capture id,
     /// but a page that learned the capture id before devicectl named the iPhone still reaches it.
-    public static func select<T: DeviceKeyed>(_ id: String?, in items: [T]) -> Result<T, RouteError> {
+    public static func select(_ id: String?, in routes: [DeviceRoute]) -> Result<DeviceRoute, RouteError> {
         guard let id else {
-            switch items.count {
+            switch routes.count {
             case 0: return .failure(.noDevice)
-            case 1: return .success(items[0])
-            default: return .failure(.ambiguous(items.count))
+            case 1: return .success(routes[0])
+            default: return .failure(.ambiguous(routes.count))
             }
         }
-        if let item = items.first(where: { $0.udid == id }) ?? items.first(where: { $0.captureID == id }) {
-            return .success(item)
+        if let route = routes.first(where: { $0.udid == id }) ?? routes.first(where: { $0.captureID == id }) {
+            return .success(route)
         }
         return .failure(.unknownDevice(id))
     }
 }
 
-/// What the listeners need of one iPhone.
-public struct DeviceRoute: DeviceKeyed, Sendable {
-    public var captureID: String
-    public var udid: String?
-    public var name: String
-    /// One word for the capture, such as "running".
-    public var state: String
-    /// One word for WDA, such as "running".
-    public var wda: String
-    public var hub: ViewerHub
-    public var client: WDAClient
-
-    public init(captureID: String, udid: String?, name: String, state: String, wda: String,
-                hub: ViewerHub, client: WDAClient) {
-        self.captureID = captureID
-        self.udid = udid
-        self.name = name
-        self.state = state
-        self.wda = wda
-        self.hub = hub
-        self.client = client
-    }
-}
-
-/// One entry of `GET /devices`. `udid` is the id for the paths: the capture id until devicectl names
-/// the iPhone. `captureID` stays the same, so a page that holds it finds the iPhone after the UDID is known.
-public struct DeviceListing: Codable, Equatable, Sendable {
-    public var udid: String
-    public var captureID: String
-    public var name: String
-    public var state: String
-    public var wda: String
-}
-
-/// The iPhones as the listeners see them. The app owns the sessions on the main actor, and the
-/// listeners run on their own queues, so the app copies what they need in here after each change.
+/// The iPhones as the listeners see them. The app sets the routes when an iPhone comes or goes.
+/// Each route changes by itself, through its session.
 public final class DeviceDirectory: Sendable {
     private let routes = OSAllocatedUnfairLock<[DeviceRoute]>(initialState: [])
 
@@ -130,9 +137,8 @@ public final class DeviceDirectory: Sendable {
         DeviceRouting.select(id, in: all)
     }
 
-    public var listing: [DeviceListing] {
-        all.map { DeviceListing(udid: $0.key, captureID: $0.captureID, name: $0.name, state: $0.state, wda: $0.wda) }
-    }
+    /// The body of `GET /devices`.
+    public var listing: [DeviceRoute.Info] { all.map(\.current) }
 
     /// Closes the viewers of every iPhone, for a restart of the video listener.
     func leaveAll() {
@@ -140,79 +146,68 @@ public final class DeviceDirectory: Sendable {
     }
 }
 
-/// The sessions of the connected iPhones, in the order of the capture devices. The key of a
-/// session is its UDID once devicectl names the iPhone, and its capture id until then.
-public struct DeviceRegistry<Session> {
-    public struct Entry: DeviceKeyed {
-        public let captureID: String
-        public fileprivate(set) var name: String
-        public fileprivate(set) var udid: String?
-        public let session: Session
+/// A session that the registry keeps: it owns the route of its iPhone.
+public protocol RoutedSession: AnyObject {
+    var route: DeviceRoute { get }
+}
 
-        public var screen: ScreenDevice { ScreenDevice(id: captureID, name: name) }
-    }
-
+/// The sessions of the connected iPhones, in the order of the capture devices.
+public struct DeviceRegistry<Session: RoutedSession> {
     public struct Changes {
         public var added: [Session] = []
         public var removed: [Session] = []
     }
 
-    public private(set) var entries: [Entry] = []
+    public private(set) var sessions: [Session] = []
+    /// The capture devices of the last `sync`.
+    public private(set) var screens: [ScreenDevice] = []
 
     public init() {}
 
-    public var sessions: [Session] { entries.map(\.session) }
+    public var routes: [DeviceRoute] { sessions.map(\.route) }
 
     /// Follows the capture devices: a new device gets a session from `make`, and a device that
     /// went loses its session. A device keeps its session, and its UDID, across a change of name.
     public mutating func sync(_ devices: [ScreenDevice], make: (ScreenDevice) -> Session) -> Changes {
         var changes = Changes()
-        let present = Set(devices.map(\.id))
-        changes.removed = entries.filter { !present.contains($0.captureID) }.map(\.session)
-        let old = Dictionary(entries.map { ($0.captureID, $0) }, uniquingKeysWith: { first, _ in first })
         var seen = Set<String>()
-        entries = devices.compactMap { device in
-            // A capture id appears once. A repeat would give one iPhone two sessions.
-            guard seen.insert(device.id).inserted else { return nil }
-            if var entry = old[device.id] {
-                entry.name = device.name
-                return entry
-            }
+        // A capture id appears once. A repeat would give one iPhone two sessions.
+        screens = devices.filter { seen.insert($0.id).inserted }
+        let present = Set(screens.map(\.id))
+        changes.removed = sessions.filter { !present.contains($0.route.captureID) }
+        let old = Dictionary(sessions.map { ($0.route.captureID, $0) }, uniquingKeysWith: { first, _ in first })
+        sessions = screens.map { device in
+            if let session = old[device.id] { return session }
             let session = make(device)
             changes.added.append(session)
-            return Entry(captureID: device.id, name: device.name, udid: nil, session: session)
+            return session
         }
         return changes
     }
 
     /// True if another capture device has the same name. Then the name cannot tell the two apart.
     public func sharesName(_ captureID: String) -> Bool {
-        guard let name = entry(captureID: captureID)?.name else { return false }
-        return entries.filter { $0.name == name }.count > 1
+        guard let name = screens.first(where: { $0.id == captureID })?.name else { return false }
+        return screens.filter { $0.name == name }.count > 1
     }
 
     /// Records the UDID of a capture device. Returns false, and changes nothing, if another session
     /// holds it: two WDA test runs on one iPhone conflict. The UDID stays when a later lookup fails,
     /// so that a viewer link with the UDID keeps working while devicectl recovers.
     @discardableResult
-    public mutating func adopt(udid: String, for captureID: String) -> Bool {
-        guard let index = entries.firstIndex(where: { $0.captureID == captureID }) else { return false }
-        if entries.contains(where: { $0.captureID != captureID && $0.udid == udid }) { return false }
-        entries[index].udid = udid
+    public func adopt(udid: String, for captureID: String) -> Bool {
+        guard let session = session(captureID: captureID) else { return false }
+        if sessions.contains(where: { $0 !== session && $0.route.udid == udid }) { return false }
+        session.route.setUDID(udid)
         return true
     }
 
-    public func entry(captureID: String) -> Entry? {
-        entries.first { $0.captureID == captureID }
-    }
-
-    public func select(_ id: String?) -> Result<Entry, RouteError> {
-        DeviceRouting.select(id, in: entries)
+    public func session(captureID: String) -> Session? {
+        sessions.first { $0.route.captureID == captureID }
     }
 }
 
 extension DeviceRegistry: Sendable where Session: Sendable {}
-extension DeviceRegistry.Entry: Sendable where Session: Sendable {}
 extension DeviceRegistry.Changes: Sendable where Session: Sendable {}
 
 extension WDAState {

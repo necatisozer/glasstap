@@ -8,7 +8,7 @@ import os
 /// capture runs only for an iPhone that is there. WDA runs only once devicectl has named the
 /// iPhone and a team is set: until then the manager has nothing to do.
 @MainActor @Observable
-public final class DeviceSession: Identifiable {
+public final class DeviceSession: Identifiable, RoutedSession {
     public enum CaptureStatus: Equatable, Sendable {
         case idle
         case waitingForPermission
@@ -36,15 +36,11 @@ public final class DeviceSession: Identifiable {
         public var requestCameraAccess: @MainActor () async -> Bool
         /// Claims the UDID for this capture device. False if another session holds it.
         public var claimUDID: @MainActor (_ captureID: String, _ udid: String) -> Bool
-        /// Called after a change that the listeners or the Setup window must see.
-        public var changed: @MainActor () -> Void
 
         public init(requestCameraAccess: @escaping @MainActor () async -> Bool,
-                    claimUDID: @escaping @MainActor (String, String) -> Bool,
-                    changed: @escaping @MainActor () -> Void) {
+                    claimUDID: @escaping @MainActor (String, String) -> Bool) {
             self.requestCameraAccess = requestCameraAccess
             self.claimUDID = claimUDID
-            self.changed = changed
         }
     }
 
@@ -62,8 +58,10 @@ public final class DeviceSession: Identifiable {
     public private(set) var identity = DeviceIdentity()
     public private(set) var showWakeHint = false
 
-    @ObservationIgnored public let hub = ViewerHub()
-    @ObservationIgnored public let wda: WDAClient
+    /// What the listeners read of this iPhone. The session updates it on each change.
+    public nonisolated let route: DeviceRoute
+    @ObservationIgnored public var hub: ViewerHub { route.hub }
+    @ObservationIgnored public var wda: WDAClient { route.client }
     @ObservationIgnored private let engine: CaptureEngine
     @ObservationIgnored private let manager: WDAManager
     @ObservationIgnored private let resolver: DeviceIdentityResolver
@@ -88,19 +86,17 @@ public final class DeviceSession: Identifiable {
         self.settings = settings
         self.hooks = hooks
         log = Logger(subsystem: "io.github.necatisozer.glasstap", category: "device")
+        let hub = ViewerHub()
         engine = CaptureEngine(hub: hub)
         let manager = WDAManager(host: host)
         self.manager = manager
         // The client follows the manager, so a new WDA address needs no call.
-        wda = WDAClient(endpoint: { manager.baseURL })
+        route = DeviceRoute(captureID: screen.id, name: screen.name, hub: hub, client: WDAClient(endpoint: { manager.baseURL }))
         resolver = DeviceIdentityResolver(lookup: lookup)
     }
 
     /// The latest lookup. nil while unknown.
     public var deviceIdentity: Result<CoreDevice, DeviceProblem>? { identity.result }
-
-    /// The identity problem, once it has lasted for the grace period.
-    public var lastingProblem: DeviceProblem? { identity.lastingProblem(at: resolver.clock.now) }
 
     public var setupDevice: SetupReport.Device {
         SetupReport.Device(id: id, identity: identity, now: resolver.clock.now, wda: wdaStatus.state)
@@ -143,6 +139,7 @@ public final class DeviceSession: Identifiable {
         guard new != screen || shared != sharedName else { return }
         screen = new
         sharedName = shared
+        route.setName(new.name)
         resolver.select(new, sharedName: shared)
     }
 
@@ -171,9 +168,8 @@ public final class DeviceSession: Identifiable {
         manager.restart()
     }
 
-    /// The "Check Again" button. It also starts a failed WDA again, for example after a sign-in in Xcode.
-    public func checkAgain() {
-        resolver.recheck()
+    /// Part of the "Check Again" button: a failed WDA starts again, for example after a sign-in in Xcode.
+    public func restartWDAIfFailed() {
         if case .failed = wdaStatus.state { manager.restart() }
     }
 
@@ -205,7 +201,7 @@ public final class DeviceSession: Identifiable {
     private func wdaChanged(_ status: WDAStatus) {
         log.notice("\(self.screen.name, privacy: .public) WDA: \(String(describing: status.state), privacy: .public)")
         wdaStatus = status
-        hooks.changed()
+        route.setWDA(status.state.word)
     }
 
     // MARK: - Device identity
@@ -224,7 +220,6 @@ public final class DeviceSession: Identifiable {
            before.udid == after.udid, before != after {
             Task { [manager] in await manager.refreshAddress() }
         }
-        hooks.changed()
     }
 
     // MARK: - Capture
@@ -260,7 +255,7 @@ public final class DeviceSession: Identifiable {
     private func setCaptureStatus(_ status: CaptureStatus) {
         guard status != captureStatus else { return }
         captureStatus = status
-        hooks.changed()
+        route.setState(status.word)
     }
 
     private func runCapture() {

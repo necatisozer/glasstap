@@ -24,46 +24,63 @@ import Testing
 }
 
 @Suite struct DeviceRoutingTests {
-    struct Item: DeviceKeyed, Equatable {
-        var captureID: String
-        var udid: String?
+    let a = DeviceRoute.fake(captureID: "cap-a", udid: "UDID-A", name: "A")
+    let b = DeviceRoute.fake(captureID: "cap-b", udid: nil, name: "B")
+
+    func select(_ id: String?, _ routes: [DeviceRoute]) -> String? {
+        try? DeviceRouting.select(id, in: routes).get().captureID
     }
 
-    let a = Item(captureID: "cap-a", udid: "UDID-A")
-    let b = Item(captureID: "cap-b", udid: nil)
-
     @Test func aPathWithoutThePrefixNeedsExactlyOneIPhone() {
-        #expect(DeviceRouting.select(nil, in: [Item]()) == .failure(.noDevice))
-        #expect(DeviceRouting.select(nil, in: [a]) == .success(a))
-        #expect(DeviceRouting.select(nil, in: [a, b]) == .failure(.ambiguous(2)))
+        #expect(DeviceRouting.select(nil, in: []).failure == .noDevice)
+        #expect(select(nil, [a]) == "cap-a")
+        #expect(DeviceRouting.select(nil, in: [a, b]).failure == .ambiguous(2))
         #expect(RouteError.noDevice.status == 409)
         #expect(RouteError.ambiguous(2).status == 409)
         #expect(RouteError.ambiguous(2).message.contains("/devices"))
     }
 
     @Test func aPathWithThePrefixNamesOneIPhone() {
-        #expect(DeviceRouting.select("UDID-A", in: [a, b]) == .success(a))
+        #expect(select("UDID-A", [a, b]) == "cap-a")
         // Until devicectl names the iPhone, its key is the capture id.
         #expect(b.key == "cap-b")
-        #expect(DeviceRouting.select("cap-b", in: [a, b]) == .success(b))
+        #expect(select("cap-b", [a, b]) == "cap-b")
         // A page that learned the capture id before the UDID still reaches the iPhone.
-        #expect(DeviceRouting.select("cap-a", in: [a, b]) == .success(a))
-        #expect(DeviceRouting.select("UDID-X", in: [a, b]) == .failure(.unknownDevice("UDID-X")))
+        #expect(select("cap-a", [a, b]) == "cap-a")
+        #expect(DeviceRouting.select("UDID-X", in: [a, b]).failure == .unknownDevice("UDID-X"))
         #expect(RouteError.unknownDevice("x").status == 404)
         // A name is never an id: an id does not route with only one iPhone either.
-        #expect(DeviceRouting.select("Phone", in: [a]) == .failure(.unknownDevice("Phone")))
+        #expect(DeviceRouting.select("A", in: [a]).failure == .unknownDevice("A"))
+    }
+
+    @Test func aRouteChangesWithItsSession() throws {
+        let route = DeviceRoute.fake(captureID: "cap-c", udid: nil, name: "C")
+        let directory = DeviceDirectory([route])
+        route.setUDID("UDID-C")
+        route.setName("Renamed")
+        route.setState("failed")
+        route.setWDA("building")
+        // The directory holds the handle, so it sees the change with no copy.
+        #expect(try directory.route("UDID-C").get() === route)
+        #expect(directory.listing == [DeviceRoute.Info(captureID: "cap-c", udid: "UDID-C", name: "Renamed",
+                                                       state: "failed", wda: "building")])
     }
 }
 
-/// `#expect` cannot hold a mutating call.
-private func adopt<S>(_ registry: inout DeviceRegistry<S>, udid: String, for captureID: String) -> Bool {
-    registry.adopt(udid: udid, for: captureID)
+extension Result {
+    var failure: Failure? {
+        if case let .failure(error) = self { error } else { nil }
+    }
 }
 
 @Suite struct DeviceRegistryTests {
-    final class Session {
+    final class Session: RoutedSession {
         let name: String
-        init(_ name: String) { self.name = name }
+        let route: DeviceRoute
+        init(_ device: ScreenDevice) {
+            name = device.name
+            route = .fake(captureID: device.id, udid: nil, name: device.name)
+        }
     }
 
     let one = ScreenDevice(id: "cap-1", name: "Phone")
@@ -72,7 +89,7 @@ private func adopt<S>(_ registry: inout DeviceRegistry<S>, udid: String, for cap
     @Test func devicesComeAndGo() {
         var registry = DeviceRegistry<Session>()
         var made: [String] = []
-        let make: (ScreenDevice) -> Session = { made.append($0.id); return Session($0.name) }
+        let make: (ScreenDevice) -> Session = { made.append($0.id); return Session($0) }
         var changes = registry.sync([one], make: make)
         #expect(changes.added.map(\.name) == ["Phone"])
         #expect(changes.removed.isEmpty)
@@ -84,71 +101,72 @@ private func adopt<S>(_ registry: inout DeviceRegistry<S>, udid: String, for cap
         // A device that stays keeps its session.
         #expect(registry.sessions[0] === first)
         #expect(made == ["cap-1", "cap-2"])
+        #expect(registry.routes.map(\.captureID) == ["cap-1", "cap-2"])
 
         changes = registry.sync([two], make: make)
         #expect(changes.added.isEmpty)
         #expect(changes.removed.count == 1 && changes.removed[0] === first)
-        #expect(registry.entries.map(\.captureID) == ["cap-2"])
+        #expect(registry.routes.map(\.captureID) == ["cap-2"])
 
         changes = registry.sync([], make: make)
         #expect(changes.removed.map(\.name) == ["Pad"])
-        #expect(registry.entries.isEmpty)
+        #expect(registry.sessions.isEmpty)
     }
 
     @Test func aRenamedDeviceKeepsItsSessionAndUDID() {
         var registry = DeviceRegistry<Session>()
-        _ = registry.sync([one], make: { Session($0.name) })
-        #expect(adopt(&registry, udid: "UDID-1", for: "cap-1"))
+        _ = registry.sync([one], make: { Session($0) })
+        #expect(registry.adopt(udid: "UDID-1", for: "cap-1"))
         let session = registry.sessions[0]
-        let changes = registry.sync([ScreenDevice(id: "cap-1", name: "Renamed")], make: { Session($0.name) })
+        let changes = registry.sync([ScreenDevice(id: "cap-1", name: "Renamed")], make: { Session($0) })
         #expect(changes.added.isEmpty && changes.removed.isEmpty)
         #expect(registry.sessions[0] === session)
-        #expect(registry.entries[0].name == "Renamed")
-        #expect(registry.entries[0].udid == "UDID-1")
+        #expect(registry.screens[0].name == "Renamed")
+        #expect(session.route.udid == "UDID-1")
     }
 
     @Test func theKeyMovesFromTheCaptureIDToTheUDID() throws {
         var registry = DeviceRegistry<Session>()
-        _ = registry.sync([one, two], make: { Session($0.name) })
-        #expect(registry.entries.map(\.key) == ["cap-1", "cap-2"])
-        #expect(adopt(&registry, udid: "UDID-1", for: "cap-1"))
-        #expect(registry.entries.map(\.key) == ["UDID-1", "cap-2"])
-        #expect(try registry.select("UDID-1").get().session.name == "Phone")
-        #expect(try registry.select("cap-1").get().session.name == "Phone")
+        _ = registry.sync([one, two], make: { Session($0) })
+        #expect(registry.routes.map(\.key) == ["cap-1", "cap-2"])
+        #expect(registry.adopt(udid: "UDID-1", for: "cap-1"))
+        #expect(registry.routes.map(\.key) == ["UDID-1", "cap-2"])
+        #expect(try DeviceRouting.select("UDID-1", in: registry.routes).get().captureID == "cap-1")
+        #expect(try DeviceRouting.select("cap-1", in: registry.routes).get().captureID == "cap-1")
         // Adopting again is no change.
-        #expect(adopt(&registry, udid: "UDID-1", for: "cap-1"))
+        #expect(registry.adopt(udid: "UDID-1", for: "cap-1"))
         // A device that is not there adopts nothing.
-        #expect(!adopt(&registry, udid: "UDID-9", for: "cap-9"))
+        #expect(!registry.adopt(udid: "UDID-9", for: "cap-9"))
     }
 
     @Test func oneUDIDBelongsToOneSession() {
         var registry = DeviceRegistry<Session>()
-        _ = registry.sync([one, two], make: { Session($0.name) })
-        #expect(adopt(&registry, udid: "UDID-1", for: "cap-1"))
+        _ = registry.sync([one, two], make: { Session($0) })
+        #expect(registry.adopt(udid: "UDID-1", for: "cap-1"))
         // Two WDA test runs on one iPhone conflict, so the second claim fails.
-        #expect(!adopt(&registry, udid: "UDID-1", for: "cap-2"))
-        #expect(registry.entries[1].udid == nil)
+        #expect(!registry.adopt(udid: "UDID-1", for: "cap-2"))
+        #expect(registry.sessions[1].route.udid == nil)
         // Once the first session has gone, the UDID is free.
-        _ = registry.sync([two], make: { Session($0.name) })
-        #expect(adopt(&registry, udid: "UDID-1", for: "cap-2"))
+        _ = registry.sync([two], make: { Session($0) })
+        #expect(registry.adopt(udid: "UDID-1", for: "cap-2"))
     }
 
     @Test func duplicateNamesMarkOnlyThoseDevices() {
         var registry = DeviceRegistry<Session>()
         let twin = ScreenDevice(id: "cap-3", name: "Phone")
-        _ = registry.sync([one, two, twin], make: { Session($0.name) })
+        _ = registry.sync([one, two, twin], make: { Session($0) })
         #expect(registry.sharesName("cap-1"))
         #expect(!registry.sharesName("cap-2"))
         #expect(registry.sharesName("cap-3"))
-        _ = registry.sync([one, two], make: { Session($0.name) })
+        _ = registry.sync([one, two], make: { Session($0) })
         #expect(!registry.sharesName("cap-1"))
     }
 
     @Test func aRepeatedCaptureIDGetsOneSession() {
         var registry = DeviceRegistry<Session>()
-        let changes = registry.sync([one, one], make: { Session($0.name) })
+        let changes = registry.sync([one, one], make: { Session($0) })
         #expect(changes.added.count == 1)
-        #expect(registry.entries.count == 1)
+        #expect(registry.sessions.count == 1)
     }
 }
 

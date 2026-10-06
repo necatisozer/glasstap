@@ -16,7 +16,7 @@ final class FakeWDA: @unchecked Sendable {
     init(port: UInt16, reply: @escaping @Sendable (HTTPRequest) -> Reply) throws {
         self.port = port
         self.reply = reply
-        listener = try Listener.loopback(port: port)
+        listener = try Listener.bind(address: "127.0.0.1", port: port)
         listener.newConnectionHandler = { [self] connection in
             connection.start(queue: queue)
             Listener.readRequest(connection) { [self] request in

@@ -2,27 +2,25 @@ import Foundation
 import Network
 import os
 
-/// Serves the viewer page, the list of iPhones and the actions on 127.0.0.1:<port>.
+/// Serves the viewer page, the list of iPhones and the actions on <address>:<port>, where the
+/// address is 127.0.0.1 unless the user chose another one.
 /// An action goes to `/devices/<id>/<action>`, or to `/<action>` while only one iPhone is connected.
 public final class ControlServer: @unchecked Sendable {
     private let token: AccessToken
     /// The WDA client and the viewer hub of each iPhone. The hub takes the viewer's reports for adaptive bitrate.
     private let devices: DeviceDirectory
-    /// The viewer HTML with its `__VIDEO_PORT__` placeholder.
-    private let pageTemplate: String?
-    /// The page as served, built once for each video port.
-    private let page: OSAllocatedUnfairLock<Data?>
+    /// The viewer page as served, with the video port filled in. A change of port makes a new server.
+    private let page: Data?
     private let listener: LoopbackListener
     private let log = Logger(subsystem: "io.github.necatisozer.glasstap", category: "control-server")
 
     /// `pageTemplate` is the viewer HTML. The page learns the video port from this server.
-    public init(port: UInt16, videoPort: UInt16, token: AccessToken, devices: DeviceDirectory,
-                pageTemplate: String?, onState: @escaping @Sendable (ListenerState) -> Void) {
+    public init(port: UInt16, address: String = ListenAddress.loopback, videoPort: UInt16, token: AccessToken,
+                devices: DeviceDirectory, pageTemplate: String?, onState: @escaping @Sendable (ListenerState) -> Void) {
         self.token = token
         self.devices = devices
-        self.pageTemplate = pageTemplate
-        page = OSAllocatedUnfairLock(initialState: Self.page(pageTemplate, videoPort: videoPort))
-        listener = LoopbackListener(name: "control-server", port: port, onState: onState)
+        page = pageTemplate.map { Data($0.replacingOccurrences(of: "__VIDEO_PORT__", with: String(videoPort)).utf8) }
+        listener = LoopbackListener(name: "control-server", address: address, port: port, onState: onState)
     }
 
     public func start() {
@@ -31,16 +29,6 @@ public final class ControlServer: @unchecked Sendable {
 
     public func stop() {
         listener.stop()
-    }
-
-    /// A change of the video port needs no restart of this listener.
-    public func setVideoPort(_ port: UInt16) {
-        let new = Self.page(pageTemplate, videoPort: port)
-        page.withLock { $0 = new }
-    }
-
-    private static func page(_ template: String?, videoPort: UInt16) -> Data? {
-        template.map { Data($0.replacingOccurrences(of: "__VIDEO_PORT__", with: String(videoPort)).utf8) }
     }
 
     /// A connection that waits this long for its next request is closed.
@@ -72,9 +60,9 @@ public final class ControlServer: @unchecked Sendable {
     }
 
     func response(to request: HTTPRequest) async -> HTTPResponse {
-        guard Auth.controlAllows(request, token: token) else { return .text(403, "forbidden") }
+        guard Auth.controlAllows(request, token: token, listen: listener.address) else { return .text(403, "forbidden") }
         if request.method == "GET", request.path == "/" {
-            guard let body = page.withLock({ $0 }) else { return .text(404, "the viewer page is missing from the app") }
+            guard let body = page else { return .text(404, "the viewer page is missing from the app") }
             return HTTPResponse(status: 200, headers: [("Content-Type", "text/html; charset=utf-8")], body: body)
         }
         switch DevicePath.parse(request.path) {
@@ -122,12 +110,8 @@ public final class ControlServer: @unchecked Sendable {
         case ("GET", "/info"):
             return .json(try JSONEncoder().encode(try await wda.windowSize()))
         case ("POST", _):
-            let action: ControlAction
-            do {
-                action = try ControlAction.parse(kind: String(path.dropFirst()), body: request.body)
-            } catch .unknownAction {
-                return .text(404, "not found")
-            } catch {
+            // `isAction` has checked the kind, so only the body can be wrong here.
+            guard let action = try? ControlAction.parse(kind: String(path.dropFirst()), body: request.body) else {
                 return .text(400, "bad request")
             }
             try await wda.perform(action)

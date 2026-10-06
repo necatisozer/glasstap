@@ -25,17 +25,46 @@ public struct AccessToken: Sendable, Equatable {
 }
 
 public enum Auth {
-    /// Rejects DNS rebinding: a foreign site name that points at 127.0.0.1.
-    public static func isLoopbackHost(_ hostHeader: String?) -> Bool {
-        guard let hostHeader else { return false }
-        let host = hostHeader.lastIndex(of: ":").map { String(hostHeader[..<$0]) } ?? hostHeader
-        return host == "127.0.0.1" || host == "localhost"
+    /// The host and the port of a Host header or of the authority of an origin: "[v6]:port",
+    /// "[v6]", "v4:port", "name:port" or "name". nil for anything else, such as an IPv6 address without brackets.
+    static func splitHost(_ authority: String) -> (host: String, port: String?)? {
+        func validPort(_ port: Substring) -> Bool { !port.isEmpty && port.allSatisfy(\.isASCII) && port.allSatisfy(\.isNumber) }
+        if authority.hasPrefix("[") {
+            guard let close = authority.firstIndex(of: "]") else { return nil }
+            let host = String(authority[authority.index(after: authority.startIndex)..<close])
+            let rest = authority[authority.index(after: close)...]
+            if rest.isEmpty { return (host, nil) }
+            guard rest.first == ":", validPort(rest.dropFirst()) else { return nil }
+            return (host, String(rest.dropFirst()))
+        }
+        let parts = authority.split(separator: ":", omittingEmptySubsequences: false)
+        switch parts.count {
+        case 1: return (authority, nil)
+        case 2 where validPort(parts[1]): return (String(parts[0]), String(parts[1]))
+        default: return nil
+        }
     }
 
-    /// The check of the control listener: page, actions, info and screenshot.
-    public static func controlAllows(_ request: HTTPRequest, token: AccessToken) -> Bool {
+    /// The Host check of both listeners. 127.0.0.1 and localhost always pass, because a tunnel such
+    /// as `ssh -L` keeps them. The chosen listen address passes too, in any text form of the same
+    /// address. Every other name fails, so that a foreign site name that points at this Mac
+    /// (DNS rebinding) cannot reach the listeners.
+    public static func isAllowedHost(_ hostHeader: String?, listen: String) -> Bool {
+        guard let hostHeader, let host = splitHost(hostHeader)?.host else { return false }
+        // An IPv6 host must be in brackets, and nothing else may be.
+        let bracketed = hostHeader.hasPrefix("[")
+        if !bracketed && (host == ListenAddress.loopback || host == "localhost") { return true }
+        guard listen != ListenAddress.loopback, bracketed == host.contains(":"),
+              let canonical = IPLiteral.canonical(host)
+        else { return false }
+        return canonical == IPLiteral.canonical(listen)
+    }
+
+    /// The check of the control listener: page, actions, info and screenshot. `listen` is the
+    /// address that the listener is bound to.
+    public static func controlAllows(_ request: HTTPRequest, token: AccessToken, listen: String = ListenAddress.loopback) -> Bool {
         let host = request.header("host") ?? ""
-        guard isLoopbackHost(host) else { return false }
+        guard isAllowedHost(host, listen: listen) else { return false }
         if request.method == "POST", let origin = request.header("origin"), origin != "http://\(host)" {
             return false
         }
@@ -54,14 +83,27 @@ public enum Auth {
         case accept(corsOrigin: String?)
     }
 
-    /// The origins of the viewer page, which alone may read the stream.
-    public static func viewerOrigins(controlPort: UInt16) -> Set<String> {
-        ["http://127.0.0.1:\(controlPort)", "http://localhost:\(controlPort)"]
+    /// The origins of the viewer page, which alone may read the stream. They follow the listen address.
+    public static func viewerOrigins(controlPort: UInt16, listen: String = ListenAddress.loopback) -> Set<String> {
+        var origins: Set<String> = ["http://127.0.0.1:\(controlPort)", "http://localhost:\(controlPort)"]
+        if listen != ListenAddress.loopback, let address = IPLiteral.canonical(listen) {
+            origins.insert("http://\(IPLiteral.urlHost(address)):\(controlPort)")
+        }
+        return origins
     }
 
-    /// The check of the video listener.
-    public static func video(_ request: HTTPRequest, token: AccessToken, viewerOrigins: Set<String>) -> VideoDecision {
-        guard isLoopbackHost(request.header("host")) else { return .reject(status: 403) }
+    /// An origin with its IP host in canonical form, so that two spellings of one address compare equal.
+    static func canonicalOrigin(_ origin: String) -> String {
+        guard origin.hasPrefix("http://"), let (host, port) = splitHost(String(origin.dropFirst("http://".count))),
+              let address = IPLiteral.canonical(host)
+        else { return origin }
+        return "http://\(IPLiteral.urlHost(address))" + (port.map { ":\($0)" } ?? "")
+    }
+
+    /// The check of the video listener. `listen` is the address that the listener is bound to.
+    public static func video(_ request: HTTPRequest, token: AccessToken, viewerOrigins: Set<String>,
+                             listen: String = ListenAddress.loopback) -> VideoDecision {
+        guard isAllowedHost(request.header("host"), listen: listen) else { return .reject(status: 403) }
         // Serve only /video and /devices/<id>/video, so that stray requests from other pages
         // cannot take the stream from the viewer.
         guard request.method == "GET", case let .route(_, rest)? = DevicePath.parse(request.path), rest == "/video" else {
@@ -73,7 +115,7 @@ public enum Auth {
         // A request from another website must not take the stream either, so refuse it.
         // Browsers send Sec-Fetch-Site even where they send no Origin (for <img> or <video>).
         if let origin = request.header("origin") {
-            guard viewerOrigins.contains(origin) else { return .reject(status: 403) }
+            guard viewerOrigins.contains(origin) || viewerOrigins.contains(canonicalOrigin(origin)) else { return .reject(status: 403) }
             return .accept(corsOrigin: origin)
         }
         if request.header("sec-fetch-site") == "cross-site" { return .reject(status: 403) }

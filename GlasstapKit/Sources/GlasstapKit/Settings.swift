@@ -40,15 +40,20 @@ public struct GlasstapSettings: Sendable, Equatable, Codable {
     public var wdaBundlePrefix: String
     /// A WDA that the user runs. nil means that glasstap builds and starts WDA itself.
     public var wdaURLOverride: URL?
+    /// The address of both listeners: 127.0.0.1 ("This Mac only"), or another address of this Mac,
+    /// in the canonical form of `IPLiteral.canonical`.
+    public var listenAddress: String
 
     public init(encoder: EncoderSettings, controlPort: UInt16, videoPort: UInt16,
-                teamID: String = "", wdaBundlePrefix: String = "", wdaURLOverride: URL? = nil) {
+                teamID: String = "", wdaBundlePrefix: String = "", wdaURLOverride: URL? = nil,
+                listenAddress: String = ListenAddress.loopback) {
         self.encoder = encoder
         self.controlPort = controlPort
         self.videoPort = videoPort
         self.teamID = teamID
         self.wdaBundlePrefix = wdaBundlePrefix
         self.wdaURLOverride = wdaURLOverride
+        self.listenAddress = listenAddress
     }
 
     public static let defaults = GlasstapSettings(
@@ -64,7 +69,7 @@ public struct GlasstapSettings: Sendable, Equatable, Codable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case encoder, controlPort, videoPort, teamID, wdaBundlePrefix, wdaURLOverride
+        case encoder, controlPort, videoPort, teamID, wdaBundlePrefix, wdaURLOverride, listenAddress
     }
 
     /// Settings saved by an older version lack the newer keys, and keep their other values.
@@ -77,6 +82,7 @@ public struct GlasstapSettings: Sendable, Equatable, Codable {
         teamID = try c.decodeIfPresent(String.self, forKey: .teamID) ?? ""
         wdaBundlePrefix = try c.decodeIfPresent(String.self, forKey: .wdaBundlePrefix) ?? ""
         wdaURLOverride = try c.decodeIfPresent(URL.self, forKey: .wdaURLOverride)
+        listenAddress = try c.decodeIfPresent(String.self, forKey: .listenAddress) ?? ListenAddress.loopback
     }
 }
 
@@ -92,6 +98,7 @@ public struct SettingsInput: Sendable, Equatable {
     public var wdaBundlePrefix: String
     /// Empty for automatic.
     public var wdaURL: String
+    public var listenAddress: String
 
     static let widthRange = 160...2000
     static let bitrateKbpsRange = 100...20_000
@@ -108,6 +115,7 @@ public struct SettingsInput: Sendable, Equatable {
         teamID = s.teamID
         wdaBundlePrefix = s.wdaBundlePrefix
         wdaURL = s.wdaURLOverride?.absoluteString ?? ""
+        listenAddress = s.listenAddress
     }
 
     /// The settings, or a message that says what to correct.
@@ -145,10 +153,14 @@ public struct SettingsInput: Sendable, Equatable {
             else { return problem("The WDA URL must be empty or an http URL, such as http://127.0.0.1:8100.") }
             url = parsed
         }
+        // Only one address of this Mac. The unspecified address would listen on every network.
+        guard let listen = IPLiteral.canonical(listenAddress.trimmingCharacters(in: .whitespaces)),
+              ListenAddress.isBindable(listen)
+        else { return problem("The listen address must be 127.0.0.1 or one address of this Mac, such as 100.101.102.103.") }
         return .success(GlasstapSettings(
             encoder: EncoderSettings(codec: codec, width: width, bitrate: bitrateKbps * 1000, fps: fps),
             controlPort: UInt16(controlPort), videoPort: UInt16(videoPort),
-            teamID: team, wdaBundlePrefix: prefix, wdaURLOverride: url))
+            teamID: team, wdaBundlePrefix: prefix, wdaURLOverride: url, listenAddress: listen))
     }
 }
 
