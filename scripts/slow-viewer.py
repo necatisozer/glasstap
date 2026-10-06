@@ -42,6 +42,8 @@ def main():
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=9301, help="the video port (default: 9301)")
     p.add_argument("--control-port", type=int, default=9300, help="the control port for reports (default: 9300)")
+    p.add_argument("--device", metavar="UDID",
+                   help="the iPhone to watch, from GET /devices (needed when more than one iPhone is connected)")
     p.add_argument("--no-report", action="store_true", help="do not report the received bytes")
     p.add_argument("--rate", type=float, default=20, help="KB/s to read; 0 reads at full speed (default: 20)")
     p.add_argument("--seconds", type=float, default=30, help="exit after this long (default: 30)")
@@ -52,13 +54,14 @@ def main():
                         " (default: 16384; 0 keeps the system default)")
     args = p.parse_args()
     token = args.token or token_from_link_file()
+    prefix = f"/devices/{args.device}" if args.device else ""
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     if args.rcvbuf:
         # Set before connect, so that the TCP window starts small.
         s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, args.rcvbuf)
     s.connect((args.host, args.port))
-    s.sendall(f"GET /video?token={token}&stats=1 HTTP/1.1\r\nHost: {args.host}:{args.port}\r\n\r\n".encode())
+    s.sendall(f"GET {prefix}/video?token={token}&stats=1 HTTP/1.1\r\nHost: {args.host}:{args.port}\r\n\r\n".encode())
 
     buf = b""
     while b"\r\n\r\n" not in buf:
@@ -96,7 +99,7 @@ def main():
             try:
                 if control is None:
                     control = http.client.HTTPConnection(args.host, args.control_port, timeout=1)
-                control.request("POST", "/stats", body=body,
+                control.request("POST", f"{prefix}/stats", body=body,
                                 headers={"X-Glasstap": token, "Content-Type": "application/json"})
                 response = control.getresponse()
                 response.read()
