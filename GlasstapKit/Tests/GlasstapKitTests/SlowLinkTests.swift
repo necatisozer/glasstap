@@ -174,10 +174,11 @@ struct TestLink {
         }
         // As the capture engine does.
         hub.setJoinHandler { queue.async { adapter.viewerJoined() } }
-        let server = VideoServer(port: port, controlPort: port - 1, token: token, hub: hub,
+        // One iPhone, so the paths of older pages (/video, /stats) reach it.
+        let devices = DeviceDirectory.single(hub: hub)
+        let server = VideoServer(port: port, controlPort: port - 1, token: token, devices: devices,
                                  onState: { s in videoState.withLock { $0 = s } })
-        let control = ControlServer(port: port - 1, videoPort: port, token: token,
-                                    wda: WDAClient(baseURL: URL(string: "http://127.0.0.1:1")!), hub: hub,
+        let control = ControlServer(port: port - 1, videoPort: port, token: token, devices: devices,
                                     pageTemplate: nil, onState: { s in controlState.withLock { $0 = s } })
         server.start()
         control.start()

@@ -3,10 +3,18 @@ import Foundation
 /// The link that opens the viewer, and a private file that holds it. A viewer on
 /// another Mac reads the file over SSH, because "Copy Viewer Link" works only at this Mac's screen.
 public struct ViewerLink: Sendable {
-    /// The token goes in the fragment, which the browser never sends to a server.
-    public static func url(controlPort: UInt16, token: AccessToken) -> URL {
-        URL(string: "http://127.0.0.1:\(controlPort)/#token=\(token.value)")!
+    /// The token goes in the fragment, which the browser never sends to a server. `device` names
+    /// one iPhone. Without it, the page uses the only iPhone, or asks which one.
+    public static func url(controlPort: UInt16, token: AccessToken, device: String? = nil) -> URL {
+        var link = "http://127.0.0.1:\(controlPort)/#token=\(token.value)"
+        if let device, let encoded = device.addingPercentEncoding(withAllowedCharacters: idCharacters) {
+            link += "&device=\(encoded)"
+        }
+        return URL(string: link)!
     }
+
+    /// A UDID needs no escape. A capture id can hold any character.
+    private static let idCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
 
     public static let defaultFile = GlasstapFolder.url.appendingPathComponent("viewer-link")
 

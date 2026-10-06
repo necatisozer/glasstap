@@ -91,8 +91,9 @@ import Testing
         var settings = GlasstapSettings.defaults
         settings.teamID = team
         settings.wdaURLOverride = override
-        return SetupReport.problems(xcode: xcode, settings: settings, identity: identity, now: now,
-                                    cameraDenied: cameraDenied, wda: wda)
+        return SetupReport.problems(xcode: xcode, settings: settings,
+                                    devices: [SetupReport.Device(id: "A", identity: identity, now: now, wda: wda)],
+                                    cameraDenied: cameraDenied)
     }
 
     @Test func eachCheck() {
@@ -102,21 +103,40 @@ import Testing
         #expect(problems(team: "") == [.teamID])
         #expect(problems(team: "", override: URL(string: "http://127.0.0.1:8100")).isEmpty)
         #expect(problems(cameraDenied: true) == [.camera])
-        #expect(problems(wda: .failed("x")) == [.wda("x")])
+        #expect(problems(wda: .failed("x")) == [.wda(device: "A", "x")])
         #expect(problems(wda: .restarting(in: .seconds(2))).isEmpty)
         var identity = DeviceIdentity()
         identity.record(.failure(.notPaired), at: .zero)
         #expect(problems(identity: identity, now: .seconds(14)).isEmpty)
-        #expect(problems(identity: identity, now: .seconds(15)) == [.iPhone(.notPaired)])
+        #expect(problems(identity: identity, now: .seconds(15)) == [.iPhone(device: "A", .notPaired)])
+    }
+
+    @Test func eachIPhoneHasItsOwnProblems() {
+        var settings = GlasstapSettings.defaults
+        settings.teamID = "ABCDE12345"
+        var unpaired = DeviceIdentity()
+        unpaired.record(.failure(.notPaired), at: .zero)
+        let devices = [
+            SetupReport.Device(id: "A", identity: unpaired, now: .seconds(20), wda: .notConfigured),
+            SetupReport.Device(id: "B", identity: unpaired, now: .seconds(20), wda: .failed("x")),
+            SetupReport.Device(id: "C", identity: DeviceIdentity(), now: .seconds(20), wda: .failed("x")),
+        ]
+        // The same problem on two iPhones stays two problems, so the Setup window shows both.
+        #expect(SetupReport.problems(xcode: nil, settings: settings, devices: devices, cameraDenied: false) == [
+            .iPhone(device: "A", .notPaired), .iPhone(device: "B", .notPaired),
+            .wda(device: "B", "x"), .wda(device: "C", "x"),
+        ])
     }
 
     @Test func onlyNewProblemsOpenTheWindow() {
         var tracker = SetupProblemTracker()
         #expect(tracker.newProblems(in: [.teamID]) == [.teamID])
         #expect(tracker.newProblems(in: [.teamID]).isEmpty)
-        #expect(tracker.newProblems(in: [.teamID, .wda("a")]) == [.wda("a")])
+        #expect(tracker.newProblems(in: [.teamID, .wda(device: "A", "a")]) == [.wda(device: "A", "a")])
         // Another reason is another problem.
-        #expect(tracker.newProblems(in: [.teamID, .wda("b")]) == [.wda("b")])
+        #expect(tracker.newProblems(in: [.teamID, .wda(device: "A", "b")]) == [.wda(device: "A", "b")])
+        // The same reason on another iPhone too.
+        #expect(tracker.newProblems(in: [.teamID, .wda(device: "A", "b"), .wda(device: "B", "b")]) == [.wda(device: "B", "b")])
         #expect(tracker.newProblems(in: []).isEmpty)
         #expect(tracker.newProblems(in: [.teamID]) == [.teamID])
     }

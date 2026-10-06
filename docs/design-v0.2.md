@@ -68,10 +68,22 @@ The window opens at the first launch, when a check starts to fail, and from **Se
 
 ## More than one iPhone
 
-- The app matches a capture device to an iPhone by name, because spike S3 found no other link. If two connected iPhones share a name, the menu asks the user to rename one.
-- Each iPhone gets its own capture, encoder, viewer slot and WDA manager.
-- The listeners stay on the same two ports. The paths carry the iPhone: `/devices/<id>/video` and `/devices/<id>/tap`. The id is the UDID.
-- The viewer page shows a picker when more than one iPhone is connected. The viewer link can name an iPhone (`#token=…&device=<UDID>`).
+- The app matches a capture device to an iPhone by name, because spike S3 found no other link. If two connected iPhones share a name, the menu asks the user to rename one. Only those iPhones get the problem. The others keep their WDA. This is also true when two capture devices share a name but devicectl shows only one of them, because the name cannot tell the two apart.
+- Each iPhone gets its own session: its capture, encoder, viewer slot, identity lookup, wake check and WDA manager. The app makes the session when the capture device appears, and stops it when the device goes. So each capture runs only while its iPhone is there. WDA starts only when devicectl has named the iPhone and a team is set.
+- The key of a session is the UDID. Until devicectl names the iPhone, the key is the capture id. The paths accept both forms, so a page that learned the capture id keeps working after the UDID is known.
+- Each iPhone has one viewer. A new viewer of an iPhone replaces only the viewer of that iPhone.
+- The listeners stay on the same two ports. The paths carry the iPhone: `/devices/<id>/video` on the video port, and `/devices/<id>/tap`, `/swipe`, `/type`, `/home`, `/switcher`, `/wake`, `/stats`, `/info` and `/screenshot` on the control port.
+- `GET /devices` lists the iPhones as `[{"udid", "captureID", "name", "state", "wda"}]`. It needs the token. `udid` is the key of the session, `captureID` is the capture id, `state` is the capture state, and `wda` is the WDA state.
+- The paths without `/devices/<id>` still work, so that the links of v0.1 work. They act on the only iPhone. With no iPhone or with more than one, they answer 409 with a message. An unknown id gets 404. The server checks the token before the iPhone, so a request without the token learns nothing about the iPhones.
+- The viewer link can name an iPhone (`#token=…&device=<UDID>`). Without it, the page asks `GET /devices`. With one iPhone, the page uses it. With more, the page shows a picker and waits for a choice. The page keeps the choice in its link, so a reload stays on that iPhone. The status bar shows the name of the iPhone.
+- The page reads `GET /devices` when it opens. After that, it reads the list only while no iPhone is chosen or while the picker shows. The wait between reads grows to 10 s while the list stays the same, and an unchanged list does not draw the picker again. With one chosen iPhone, the stream tells the page instead: the page reads the list when the stream ends, gets 404 or gets 409. So a page that shows one iPhone does not see a second iPhone until it reloads. The page finds its iPhone by the UDID or by the capture id. When the app learns the UDID, the page uses the UDID from then on, with no new connection. If the chosen iPhone is gone and one other iPhone is connected, the page changes to that iPhone. With more, it shows the picker. With none, it says "No iPhone is connected". Each change updates the link of the page.
+- The menu has one section for each iPhone, with **Open Viewer** for that iPhone and **Restart WDA**. **Copy Viewer Link** copies the link without an iPhone. The Setup window shows one row for each iPhone.
+- The WDA URL override names one WDA, so the app uses it only while one iPhone is connected. With more, a tap could go to the wrong iPhone.
+- Two iPhones on the same iOS major version share one WDA build folder. Their builds run one after the other, because two builds in one folder conflict. The second build uses the result of the first, if there is one. A build that waits and is cancelled, for example because its iPhone was unplugged, stops waiting at once.
+- A clean build after a signing failure also waits for the build that runs. If no test run uses the folder, the app deletes it. If the test run of another iPhone uses it, the clean build goes into a new folder, and the old folder goes when its last test run ends.
+- All sessions share one `devicectl list devices` call when they look at the same time.
+- If an iPhone comes back before its old test run has stopped, the new start stops the old run first, through the pid file.
+- When a session stops, its viewer hub closes. A viewer that joins after that gets 409 with a message at once. It does not wait for a stream that never starts.
 
 ## Adaptive bitrate
 

@@ -6,16 +6,12 @@ struct MenuContent: View {
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
-        Text(deviceLine)
-        ForEach(model.setupProblems, id: \.self) { problem in
-            if case let .iPhone(deviceProblem) = problem { Text(deviceProblem.message) }
+        if model.sessions.isEmpty {
+            Text(model.isSearching ? "Looking for an iPhone…" : "No iPhone found")
         }
-        Text(captureLine)
-        if let adaptingLine { Text(adaptingLine) }
-        Text(model.viewerConnected ? "Viewer connected" : "No viewer connected")
-        Text(wdaLine)
-        if model.showWakeHint {
-            Text("Wake the iPhone: its display seems to be off")
+        ForEach(Array(model.sessions.enumerated()), id: \.element.id) { index, session in
+            // Only the first iPhone gets the shortcuts: a menu cannot give one shortcut to two items.
+            DeviceSection(model: model, session: session, isFirst: index == 0)
         }
         if case let .failed(message) = model.controlState {
             Text("Viewer port \(String(model.settings.controlPort)) unavailable: \(message)")
@@ -26,27 +22,12 @@ struct MenuContent: View {
 
         Divider()
 
-        if case .failed = model.captureStatus {
-            Button("Restart Capture") { model.restartCapture() }
-                .keyboardShortcut("r")
+        if model.sessions.isEmpty {
+            Button("Open Viewer") { model.openViewer() }
+                .keyboardShortcut("o")
         }
-        if model.wdaStatus.state != .notConfigured {
-            Button("Restart WDA") { model.restartWDA() }
-        }
-        Button("Open Viewer") { model.openViewer() }
-            .keyboardShortcut("o")
         Button("Copy Viewer Link") { model.copyViewerLink() }
             .keyboardShortcut("c")
-        if model.devices.count > 1 {
-            Picker("iPhone", selection: Binding(
-                get: { model.selectedDeviceID ?? "" },
-                set: { model.selectDevice($0) }
-            )) {
-                ForEach(model.devices) { device in
-                    Text(device.name).tag(device.id)
-                }
-            }
-        }
 
         Divider()
 
@@ -60,33 +41,59 @@ struct MenuContent: View {
         Button("Quit glasstap") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
     }
+}
 
-    private var deviceLine: String {
-        if let device = model.selectedDevice { return device.name }
-        return model.isSearching ? "Looking for an iPhone…" : "No iPhone found"
+/// The lines and actions of one iPhone.
+struct DeviceSection: View {
+    let model: AppModel
+    let session: DeviceSession
+    let isFirst: Bool
+
+    var body: some View {
+        Section(session.screen.name) {
+            ForEach(model.setupProblems, id: \.self) { problem in
+                if case let .iPhone(device, deviceProblem) = problem, device == session.id { Text(deviceProblem.message) }
+            }
+            Text(captureLine)
+            if let adaptingLine { Text(adaptingLine) }
+            Text(session.viewerConnected ? "Viewer connected" : "No viewer connected")
+            Text(wdaLine)
+            if session.showWakeHint {
+                Text("Wake the iPhone: its display seems to be off")
+            }
+            if case .failed = session.captureStatus {
+                Button("Restart Capture") { session.restartCapture() }
+                    .keyboardShortcut(isFirst ? KeyboardShortcut("r") : nil)
+            }
+            Button("Open Viewer") { model.openViewer(session) }
+                .keyboardShortcut(isFirst ? KeyboardShortcut("o") : nil)
+            if session.wdaStatus.state != .notConfigured {
+                Button("Restart WDA") { session.restartWDA() }
+            }
+        }
     }
 
     private var captureLine: String {
-        switch model.captureStatus {
+        switch session.captureStatus {
         case .idle: "Capture: not running"
         case .waitingForPermission: "Capture: allow camera access for glasstap"
         case .noPermission: "Capture: no camera access. Allow it in System Settings › Privacy & Security › Camera."
         case .starting: "Capture: starting…"
-        case .running: "Capture: \(model.fps) fps"
+        case .running: "Capture: \(session.fps) fps"
         case let .failed(message): "Capture failed: \(message)"
         }
     }
 
     /// Shown only while adaptive bitrate holds the encoder below the settings.
     private var adaptingLine: String? {
-        guard model.captureStatus == .running, let target = model.encoderTarget else { return nil }
-        let set = model.settings.encoder
-        guard target.bitrate != set.bitrate else { return nil }
+        guard session.captureStatus == .running, let target = session.encoderTarget else { return nil }
+        guard target.bitrate != model.settings.encoder.bitrate else { return nil }
         return "Bitrate: \(target.bitrate / 1000) kbit/s (adapting)"
     }
 
     private var wdaLine: String {
-        "WDA: " + model.wdaStatus.state.summary(teamSet: !model.settings.teamID.isEmpty)
+        if session.overrideIsIdle { return "WDA: the URL override works with one iPhone only" }
+        return "WDA: " + session.wdaStatus.state.summary(teamSet: !model.settings.teamID.isEmpty)
     }
 }
 
@@ -114,7 +121,8 @@ struct MenuBarIcon: View {
     }
 
     private var symbol: String {
-        if model.selectedDevice == nil { return "iphone.slash" }
-        return model.captureStatus == .running && model.viewerConnected ? "iphone.radiowaves.left.and.right" : "iphone"
+        if model.sessions.isEmpty { return "iphone.slash" }
+        let watched = model.sessions.contains { $0.captureStatus == .running && $0.viewerConnected }
+        return watched ? "iphone.radiowaves.left.and.right" : "iphone"
     }
 }

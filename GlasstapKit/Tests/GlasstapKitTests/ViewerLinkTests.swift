@@ -12,6 +12,9 @@ import Testing
     @Test func url() {
         #expect(ViewerLink.url(controlPort: 9300, token: token).absoluteString
             == "http://127.0.0.1:9300/#token=0123456789abcdef0123456789abcdef")
+        #expect(ViewerLink.url(controlPort: 9300, token: token, device: "00008101-000A1B2C3D4E5F60").absoluteString
+            == "http://127.0.0.1:9300/#token=0123456789abcdef0123456789abcdef&device=00008101-000A1B2C3D4E5F60")
+        #expect(ViewerLink.url(controlPort: 9300, token: token, device: "a&b c").absoluteString.hasSuffix("&device=a%26b%20c"))
     }
 
     @Test func fileIsPrivate() throws {

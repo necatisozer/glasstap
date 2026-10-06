@@ -56,12 +56,14 @@ public actor DeviceIdentityResolver {
     private let lookup: @Sendable () async throws -> [CoreDevice]
     private var identity = DeviceIdentity()
     private var device: ScreenDevice?
+    /// Another capture device has the same name, so the name cannot tell the two apart.
+    private var sharedName = false
     private var failedLookups = 0
     private var lookupTask: Task<Void, Never>?
     private var graceTask: Task<Void, Never>?
 
     private enum Command {
-        case select(ScreenDevice?)
+        case select(ScreenDevice?, sharedName: Bool)
         case recheck
     }
 
@@ -77,9 +79,10 @@ public actor DeviceIdentityResolver {
         }
     }
 
-    /// The selected capture device, or nil. Calls take effect in their order.
-    public nonisolated func select(_ device: ScreenDevice?) {
-        commands.yield(.select(device))
+    /// The selected capture device, or nil. Calls take effect in their order. `sharedName` is true
+    /// while another capture device has the same name: then neither can be matched to its iPhone.
+    public nonisolated func select(_ device: ScreenDevice?, sharedName: Bool = false) {
+        commands.yield(.select(device, sharedName: sharedName))
     }
 
     /// An event that may have fixed a problem: Check Again, or the app becoming active.
@@ -89,7 +92,7 @@ public actor DeviceIdentityResolver {
 
     private func handle(_ command: Command) {
         switch command {
-        case let .select(new):
+        case let .select(new, shared):
             // Another device, or none: nothing of the old one stays.
             if new?.id != device?.id {
                 identity = DeviceIdentity()
@@ -97,6 +100,7 @@ public actor DeviceIdentityResolver {
                 sink.yield(identity)
             }
             device = new
+            sharedName = shared
         case .recheck:
             break
         }
@@ -107,18 +111,23 @@ public actor DeviceIdentityResolver {
     private func scheduleLookup(after delay: Duration) {
         lookupTask?.cancel()
         guard let device else { return lookupTask = nil }
-        lookupTask = Task { [clock] in
+        lookupTask = Task { [clock, sharedName] in
             do { try await clock.sleep(for: delay) } catch { return }
-            await self.lookUp(device)
+            await self.lookUp(device, sharedName: sharedName)
         }
     }
 
-    private func lookUp(_ device: ScreenDevice) async {
+    private func lookUp(_ device: ScreenDevice, sharedName: Bool) async {
         let result: Result<CoreDevice, DeviceProblem>
-        do {
-            result = Devicectl.match(captureName: device.name, in: try await lookup())
-        } catch {
-            result = .failure(.lookupFailed(String(describing: error)))
+        if sharedName {
+            // devicectl could name only one of the two, and WDA would then run for the wrong capture.
+            result = .failure(.duplicateName(device.name))
+        } else {
+            do {
+                result = Devicectl.match(captureName: device.name, in: try await lookup())
+            } catch {
+                result = .failure(.lookupFailed(String(describing: error)))
+            }
         }
         guard !Task.isCancelled, device == self.device else { return }
         let wasFailing = identity.problemSince != nil
@@ -152,12 +161,35 @@ public actor DeviceIdentityResolver {
     }
 }
 
+/// One `devicectl list devices` for every session that asks at the same time, such as when
+/// several iPhones are plugged in together.
+public actor SharedDeviceLookup {
+    private let lookup: @Sendable () async throws -> [CoreDevice]
+    private var inFlight: Task<[CoreDevice], any Error>?
+
+    public init(lookup: @escaping @Sendable () async throws -> [CoreDevice] = { try await Devicectl.listDevices() }) {
+        self.lookup = lookup
+    }
+
+    public func devices() async throws -> [CoreDevice] {
+        if let inFlight { return try await inFlight.value }
+        let task = Task { [lookup] in try await lookup() }
+        inFlight = task
+        defer { inFlight = nil }
+        return try await task.value
+    }
+}
+
 extension WDAMode {
     /// What WDA to run: the user's own at the override URL, or the managed one once a team is set
     /// and the iPhone is known, or none.
-    public static func resolve(settings: GlasstapSettings, identity: DeviceIdentity, now: Duration) -> WDAMode {
-        if let url = settings.wdaURLOverride { return .external(url) }
-        guard let signing = settings.wdaSigning, let device = identity.wdaDevice(at: now) else { return .off }
+    /// The override names one WDA, so it applies only while `overrideAllowed`: with one iPhone.
+    /// With more, a tap could reach the wrong iPhone. `udidClaimed` is false while another session
+    /// holds the same UDID, because two test runs on one iPhone conflict.
+    public static func resolve(settings: GlasstapSettings, identity: DeviceIdentity, now: Duration,
+                               overrideAllowed: Bool = true, udidClaimed: Bool = true) -> WDAMode {
+        if let url = settings.wdaURLOverride { return overrideAllowed ? .external(url) : .off }
+        guard udidClaimed, let signing = settings.wdaSigning, let device = identity.wdaDevice(at: now) else { return .off }
         return .managed(WDATarget(udid: device.udid, signing: signing))
     }
 }

@@ -4,6 +4,21 @@ import os
 import Testing
 @testable import GlasstapKit
 
+extension DeviceDirectory {
+    /// One iPhone whose WDA is at a closed port, so no iPhone is involved.
+    static func single(hub: ViewerHub = ViewerHub(), captureID: String = "capture-1", udid: String? = "UDID-1",
+                       name: String = "Phone") -> DeviceDirectory {
+        DeviceDirectory([.fake(captureID: captureID, udid: udid, name: name, hub: hub)])
+    }
+}
+
+extension DeviceRoute {
+    static func fake(captureID: String, udid: String?, name: String, hub: ViewerHub = ViewerHub()) -> DeviceRoute {
+        DeviceRoute(captureID: captureID, udid: udid, name: name, state: "running", wda: "running", hub: hub,
+                    client: WDAClient(baseURL: URL(string: "http://127.0.0.1:1")!))
+    }
+}
+
 /// The two listeners on real loopback sockets. WDA points at a closed port, so no iPhone is involved.
 @Suite(.serialized) struct ServerTests {
     let token = AccessToken.generate()
@@ -26,8 +41,7 @@ import Testing
     @Test func controlServer() async throws {
         let state = OSAllocatedUnfairLock(initialState: ListenerState.stopped)
         let server = ControlServer(
-            port: controlPort, videoPort: videoPort, token: token,
-            wda: WDAClient(baseURL: URL(string: "http://127.0.0.1:1")!),
+            port: controlPort, videoPort: videoPort, token: token, devices: .single(),
             pageTemplate: "<p>video on __VIDEO_PORT__</p>",
             onState: { s in state.withLock { $0 = s } })
         server.start()
@@ -67,7 +81,7 @@ import Testing
     @Test func videoServer() async throws {
         let state = OSAllocatedUnfairLock(initialState: ListenerState.stopped)
         let hub = ViewerHub()
-        let server = VideoServer(port: videoPort, controlPort: controlPort, token: token, hub: hub,
+        let server = VideoServer(port: videoPort, controlPort: controlPort, token: token, devices: .single(hub: hub),
                                  onState: { s in state.withLock { $0 = s } })
         server.start()
         defer { server.stop() }
@@ -121,7 +135,7 @@ import Testing
         let hub = ViewerHub()
         // A port of its own: the listener of the test before may still be closing.
         let videoPort: UInt16 = 39302
-        let server = VideoServer(port: videoPort, controlPort: controlPort, token: token, hub: hub,
+        let server = VideoServer(port: videoPort, controlPort: controlPort, token: token, devices: .single(hub: hub),
                                  onState: { s in state.withLock { $0 = s } })
         server.start()
         defer { server.stop() }
@@ -162,7 +176,7 @@ import Testing
     /// Opens a stats viewer and returns the first `count` messages, after a key frame from the hub.
     func firstMessages(_ count: Int, port: UInt16, hub: ViewerHub, during: () -> Void = {}) async throws -> [(type: UInt8, payload: Data)] {
         let state = OSAllocatedUnfairLock(initialState: ListenerState.stopped)
-        let server = VideoServer(port: port, controlPort: port - 1, token: token, hub: hub,
+        let server = VideoServer(port: port, controlPort: port - 1, token: token, devices: .single(hub: hub),
                                  onState: { s in state.withLock { $0 = s } })
         server.start()
         defer { server.stop() }
@@ -221,8 +235,7 @@ import Testing
     @Test func requestsShareOneConnectionUntilTheClientCloses() async throws {
         let token = AccessToken.generate()
         let state = OSAllocatedUnfairLock(initialState: ListenerState.stopped)
-        let server = ControlServer(port: 39309, videoPort: 39308, token: token,
-                                   wda: WDAClient(baseURL: URL(string: "http://127.0.0.1:1")!), hub: ViewerHub(),
+        let server = ControlServer(port: 39309, videoPort: 39308, token: token, devices: .single(),
                                    pageTemplate: nil, onState: { s in state.withLock { $0 = s } })
         server.start()
         defer { server.stop() }
@@ -277,8 +290,7 @@ import Testing
     let hub = ViewerHub()
 
     var server: ControlServer {
-        ControlServer(port: 39330, videoPort: 39331, token: token,
-                      wda: WDAClient(baseURL: URL(string: "http://127.0.0.1:1")!), hub: hub,
+        ControlServer(port: 39330, videoPort: 39331, token: token, devices: .single(hub: hub),
                       pageTemplate: nil, onState: { _ in })
     }
 
@@ -291,14 +303,14 @@ import Testing
     }
 
     @Test func aReportForTheCurrentSessionCounts() async {
-        let session = hub.join(NWConnection(host: "127.0.0.1", port: 9, using: .tcp))
+        let session = hub.join(NWConnection(host: "127.0.0.1", port: 9, using: .tcp))!
         #expect(hub.takeLinkSample()?.feedback == nil)
         #expect(await post(#"{"session":"\#(session)","received":0}"#, token: token.value) == 200)
         #expect(hub.takeLinkSample()?.feedback == ViewerFeedback(queue: 0, growth: 0, keyFrame: 0))
     }
 
     @Test func aWrongTokenOrSessionChangesNothing() async {
-        let session = hub.join(NWConnection(host: "127.0.0.1", port: 9, using: .tcp))
+        let session = hub.join(NWConnection(host: "127.0.0.1", port: 9, using: .tcp))!
         let body = #"{"session":"\#(session)","received":0}"#
         #expect(await post(body, token: nil) == 403)
         #expect(await post(body, token: AccessToken.generate().value) == 403)
@@ -310,7 +322,7 @@ import Testing
     }
 
     @Test func aReplacedViewersSessionEnds() async {
-        let first = hub.join(NWConnection(host: "127.0.0.1", port: 9, using: .tcp))
+        let first = hub.join(NWConnection(host: "127.0.0.1", port: 9, using: .tcp))!
         hub.join(NWConnection(host: "127.0.0.1", port: 9, using: .tcp))
         #expect(await post(#"{"session":"\#(first)","received":0}"#, token: token.value) == 404)
         #expect(hub.takeLinkSample()?.feedback == nil)

@@ -61,10 +61,11 @@ public protocol WDAHost: Sendable {
     func installedSource() -> URL?
     func downloadSource() async throws -> URL
     func deviceDetails(udid: String) async throws -> CoreDevice
-    func cachedTestRun(for build: WDABuild) -> URL?
+    func cachedTestRun(for build: WDABuild) async -> URL?
     /// Returns the `.xctestrun` file. Throws `WDABuildFailure` when xcodebuild fails.
     func build(_ build: WDABuild, source: URL, udid: String) async throws -> URL
-    func removeBuild(_ build: WDABuild)
+    /// Makes the next build a clean one. Throws only when the task is cancelled.
+    func removeBuild(_ build: WDABuild) async throws
     /// Starts the test run. It first stops a test run that an earlier app launch left behind.
     func launch(testRun: URL, udid: String) async throws -> any WDAProcess
     func isHealthy(_ baseURL: URL) async -> Bool
@@ -300,7 +301,7 @@ public actor WDAManager {
                 return
             case let .rebuild(build):
                 log.notice("WDA failed to start with a signing error. Building again.")
-                host.removeBuild(build)
+                do { try await host.removeBuild(build) } catch { return }
                 rebuiltForSigning = true
             case let .failed(reason, lines):
                 log.error("WDA failed: \(reason, privacy: .public)")
@@ -350,7 +351,7 @@ public actor WDAManager {
         let build = WDABuild(wdaVersion: host.wdaVersion, signing: target.signing, iOSMajorVersion: major)
 
         let testRun: URL
-        if let cached = host.cachedTestRun(for: build) {
+        if let cached = await host.cachedTestRun(for: build) {
             testRun = cached
         } else {
             publish(.building)
