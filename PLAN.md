@@ -107,7 +107,7 @@ A spike is a short test that decides the design. Do not start a milestone before
 | **S1** Start WDA with Xcode tools | `xcodebuild test-without-building` with a WDA `.xctestrun` on iOS 26. | WDA answers `/status` with no `pymobiledevice3`. |
 | **S2** Reach port 8100 | A native usbmuxd client, or the CoreDevice tunnel address of iOS 17+. Capture a real usbmuxd exchange before you write the client. | A tap reaches WDA with no `pymobiledevice3`. |
 | **S3** Map capture device to UDID | The capture `uniqueID` is not the UDID. Find the link between them. | With two iPhones on USB, each stream matches the right WDA. |
-| **v0.2** WDA manager and robustness | WDA build, sign, start and restart. Access token. Adaptive bitrate. Reconnect. More than one iPhone. See [the v0.2 design](docs/design-v0.2.md). | The app runs for a day with no manual restart. |
+| **v0.2** WDA manager and robustness | WDA build, sign, start and restart. Access token. Adaptive bitrate. Reconnect. More than one iPhone. See [the v0.2 design](docs/design-v0.2.md). | The app runs for a day with no manual restart. **Released as v0.2.0.** A one-hour run with a full-speed viewer passed: one process, one WDA run, no restart, and memory went from 94 MB to 72 MB. A one-day run, two iPhones, an unplug and Tailscale are not tested yet. |
 | **S4** Measure the delay | A test page on the iPhone shows a millisecond clock. Compare it with the viewer's clock in one screenshot. | The README states the delay on LAN and on a 1.6 Mbit/s link. |
 | **v0.3** Release | Notarized DMG, Homebrew cask, setup guide, benchmark table. | The setup takes less than 10 minutes on a clean Mac. |
 
