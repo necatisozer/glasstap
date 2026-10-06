@@ -72,6 +72,32 @@ extension DeviceRoute {
 
         #expect(try await status(URLRequest(url: URL(string: base + "/info")!)).0 == 403)
         #expect(try await status(URLRequest(url: URL(string: base + "/screenshot?token=\(token.value)")!)).0 == 502)
+        #expect(try await status(URLRequest(url: URL(string: base + "/locked")!)).0 == 403)
+        // The fake WDA runs at a closed port, so the lock state fails upstream.
+        #expect(try await status(URLRequest(url: URL(string: base + "/locked?token=\(token.value)")!)).0 == 502)
+    }
+
+    @Test func lockStateWithoutWDA() async throws {
+        let waiting = DeviceRoute.fake(captureID: "c1", udid: "U1", name: "Locked")
+        waiting.setWDA(WDAState.waitingForUnlock.word)
+        let off = DeviceRoute.fake(captureID: "c2", udid: "U2", name: "Off")
+        off.setWDA(WDAState.notConfigured.word)
+        let state = OSAllocatedUnfairLock(initialState: ListenerState.stopped)
+        let server = ControlServer(port: controlPort, videoPort: videoPort, token: token,
+                                   devices: DeviceDirectory([waiting, off]), pageTemplate: "",
+                                   onState: { s in state.withLock { $0 = s } })
+        server.start()
+        defer { server.stop() }
+        try await waitUntilReady(state)
+        func lock(_ id: String) async throws -> String {
+            let url = URL(string: "http://127.0.0.1:\(controlPort)/devices/\(id)/locked?token=\(token.value)")!
+            let (code, body) = try await status(URLRequest(url: url))
+            #expect(code == 200)
+            return String(decoding: body, as: UTF8.self)
+        }
+        // A WDA start that waits for the unlock: locked, and only the user at the iPhone can unlock it.
+        #expect(try await lock("U1") == #"{"canWake":false,"locked":true}"#)
+        #expect(try await lock("U2") == #"{"canWake":false,"locked":false}"#)
     }
 
     @Test func videoServer() async throws {

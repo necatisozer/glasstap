@@ -26,6 +26,7 @@ public struct WDARequest: Sendable, Equatable {
     static let status = WDARequest("GET", "/status")
     static let createSession = WDARequest("POST", "/session", ["capabilities": ["alwaysMatch": ["platformName": "iOS"]]])
     static let screenshot = WDARequest("GET", "/screenshot")
+    static let locked = WDARequest("GET", "/wda/locked")
     static func windowSize(_ sid: String) -> WDARequest { WDARequest("GET", "/session/\(sid)/window/size") }
     static func activeAppInfo(_ sid: String) -> WDARequest { WDARequest("GET", "/session/\(sid)/wda/activeAppInfo") }
     static func pressHome(_ sid: String) -> WDARequest { WDARequest("POST", "/session/\(sid)/wda/pressButton", ["name": "home"]) }

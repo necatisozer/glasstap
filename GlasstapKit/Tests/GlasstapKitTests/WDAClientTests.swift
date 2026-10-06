@@ -122,6 +122,19 @@ final class FakeWDA: @unchecked Sendable {
         #expect(wda.requests == ["GET /screenshot"])
     }
 
+    @Test func lockState() async throws {
+        let locked = OSAllocatedUnfairLock(initialState: "true")
+        let wda = try FakeWDA(port: 39406) { _ in (200, #"{"value":\#(locked.withLock { $0 }),"sessionId":"S"}"#) }
+        defer { wda.stop() }
+        let client = WDAClient(baseURL: wda.url)
+        #expect(try await client.isLocked())
+        locked.withLock { $0 = "false" }
+        #expect(try await !client.isLocked())
+        locked.withLock { $0 = "null" }
+        await #expect(throws: WDAClient.ReplyError.self) { try await client.isLocked() }
+        #expect(wda.requests == ["GET /wda/locked", "GET /wda/locked", "GET /wda/locked"])
+    }
+
     @Test func wakePressesHomeOnlyOnSpringBoard() async throws {
         let front = OSAllocatedUnfairLock(initialState: "com.apple.springboard")
         let wda = try FakeWDA(port: 39404) { [size] r in
