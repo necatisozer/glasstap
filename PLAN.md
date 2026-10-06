@@ -111,6 +111,22 @@ A spike is a short test that decides the design. Do not start a milestone before
 | **S4** Measure the delay | A test page on the iPhone shows a millisecond clock. Compare it with the viewer's clock in one screenshot. | The README states the delay on LAN and on a 1.6 Mbit/s link. |
 | **v0.3** Release | Notarized DMG, Homebrew cask, setup guide, benchmark table. | The setup takes less than 10 minutes on a clean Mac. |
 
+## Spike results
+
+Measured on 2026-10-06 with an iPhone 12 Pro (iOS 26.5) on USB, Xcode 27 and macOS 26.6.2.
+
+| Spike | Result | What v0.2 does with it |
+|---|---|---|
+| **S1** Start WDA with Xcode tools | **Passed.** `xcodebuild build-for-testing` built WebDriverAgent 16.12.10, signed with the user's team. `xcodebuild test-without-building -xctestrun … -destination id=<UDID>` started WDA with no `pymobiledevice3`. | The WDA manager builds once and starts WDA with `test-without-building`. |
+| **S2** Reach port 8100 | **Passed.** `xcrun devicectl device info details` gives the iPhone's CoreDevice tunnel address (`connectionProperties.tunnelIPAddress`, an IPv6 address). WDA answered on `http://[<address>]:8100` in 12 ms. The `<UDID>.coredevice.local` name also works, but its lookup took 5 s. | The app reads the tunnel address from `devicectl` and talks to WDA directly. No forwarder listens on `127.0.0.1:8100`, and no usbmuxd client is needed. |
+| **S3** Map capture device to UDID | **No direct link.** The capture `uniqueID` is not the UDID, the ECID or the CoreDevice identifier, and it does not appear in the `devicectl` data. Only the device name is the same on both sides. | Match by name. If two iPhones share a name, ask the user to rename one. |
+| **S4** Measure the delay | Not done. | Still open. |
+
+Other findings:
+
+- `POST /session/<id>/wda/lock` fails on this iPhone with "Timed out while waiting until the screen gets locked", with and without a capture. A test of the dark-display path needs a press of the side button.
+- WDA logged `ServerURLHere->http://<Wi-Fi address>:8100`, so it also listens on the iPhone's Wi-Fi address. This confirms the risk below.
+
 ## Later
 
 - An MCP server, so that AI agents can see and control the iPhone.
@@ -125,7 +141,7 @@ A spike is a short test that decides the design. Do not start a milestone before
 - Apple can change or remove the iOS screen-capture device of CoreMediaIO.
 - WDA signing is the hardest step for new users, especially with a free Apple account.
 - WDA on the iPhone listens on the Wi-Fi address too, with no authentication. Anyone on that network can control the iPhone (measured: `http://<iPhone IP>:8100/status` answered 200). Find a way to bind WDA to the USB link only, or tell users to keep the iPhone on a trusted network.
-- On the host Mac, the prototype forwards WDA to `127.0.0.1:8100` with `pymobiledevice3`. Any local user on the host can control the iPhone through that port. The v0.2 WDA manager must forward to a private Unix socket, as the viewer side already does.
+- On the host Mac, the prototype forwards WDA to `127.0.0.1:8100` with `pymobiledevice3`. Any local user on the host can control the iPhone through that port. Spike S2 removes the forwarder, but the CoreDevice tunnel address is also open to every local process on the host. v0.2 must check whether macOS limits that address to the user who owns the tunnel.
 - Apple's trademark rules do not allow "iPhone" or "iOS" in a product name. The final name must avoid them.
 
 ## Decisions
