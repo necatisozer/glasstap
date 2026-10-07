@@ -26,7 +26,7 @@ On the host Mac (the Mac with the iPhone on USB):
 - macOS 14 or later. Only macOS 26 on Apple silicon is tested.
 - **Xcode is required (devicectl and xcodebuild).** The Command Line Tools alone are not enough.
 - An Apple account in Xcode > Settings > Accounts. A free account works, but its WebDriverAgent profile is valid for 7 days. glasstap then builds WebDriverAgent again by itself.
-- [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`), to build glasstap from source.
+- No other tools. The build uses an installed [XcodeGen](https://github.com/yonaskolb/XcodeGen), or downloads XcodeGen 2.46.0 once and checks its SHA-256.
 - An Apple Development certificate. With it, the camera approval stays valid after a rebuild of glasstap.
 
 On the iPhone: Developer Mode on, and the host Mac trusted.
@@ -36,13 +36,7 @@ In the browser: WebCodecs with H.265 decoding, for example Chrome or Safari on m
 ## Install
 
 1. Install Xcode, and open it once. In Xcode > Settings > Accounts, sign in with your Apple account. If Manage Certificates shows no Apple Development certificate, add one.
-2. Install XcodeGen:
-
-   ```bash
-   brew install xcodegen
-   ```
-
-3. Get the source, and install glasstap:
+2. Get the source, and install glasstap:
 
    ```bash
    git clone https://github.com/necatisozer/glasstap.git
@@ -53,10 +47,10 @@ In the browser: WebCodecs with H.265 decoding, for example Chrome or Safari on m
    ```
 
    `make install` finds the team of your Apple Development certificate, and writes it to `Config/Local.xcconfig`. It then builds glasstap, copies it to `~/Applications`, and opens it. glasstap uses the same team for WebDriverAgent. If you have more than one team, `make install` lists them. Then run `make install TEAM=<team id>`.
-4. Plug in the iPhone with a USB cable, unlock it, and tap **Trust**.
-5. On the iPhone, turn on Developer Mode in Settings > Privacy & Security > Developer Mode, and restart the iPhone if it asks.
-6. On the first capture, click **Allow** for "glasstap". macOS asks for camera access, because it treats the iPhone screen as a camera.
-7. In the menu bar, click the glasstap icon, and then click **Open Viewer**.
+3. Plug in the iPhone with a USB cable, unlock it, and tap **Trust**.
+4. On the iPhone, turn on Developer Mode in Settings > Privacy & Security > Developer Mode, and restart the iPhone if it asks.
+5. On the first capture, click **Allow** for "glasstap". macOS asks for camera access, because it treats the iPhone screen as a camera.
+6. In the menu bar, click the glasstap icon, and then click **Open Viewer**.
 
 To update glasstap, run `git pull` and `make install` again. For development, use `make build` and `make run`. They use the team in `Config/Local.xcconfig`.
 

@@ -6,8 +6,7 @@ INSTALL_DIR ?= $(HOME)/Applications
 .PHONY: project build test run install
 
 project:
-	@command -v xcodegen > /dev/null || { echo "XcodeGen is missing. Install it: brew install xcodegen"; exit 1; }
-	xcodegen generate
+	scripts/xcodegen.sh generate
 
 build: project
 	xcodebuild -project glasstap.xcodeproj -scheme glasstap -configuration Debug \
