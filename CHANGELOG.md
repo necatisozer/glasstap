@@ -1,5 +1,41 @@
 # Changelog
 
+## v0.3.0 (2026-10-08)
+
+You install glasstap with one command from a clone, and you never type your team id. A locked iPhone no longer looks like a frozen stream.
+
+### Added
+
+- **`make install`.** It finds the team of your Apple Development certificate, or takes `TEAM=`, and writes it to `Config/Local.xcconfig`. Then it builds a Release app signed with that team, copies it to `~/Applications`, and opens it.
+- **The team comes from the app's signature.** With no team set, glasstap signs WDA with the team that signed the app.
+- **No Homebrew.** If XcodeGen is not installed, the build downloads XcodeGen 2.46.0 once and checks its SHA-256. A clean Mac needs only Xcode.
+- **A banner for a locked iPhone.** The viewer asks `GET /devices/<id>/locked` every 3 s. It shows "The iPhone is locked" with a **Wake screen** button, or "Unlock the iPhone to control it" while WDA waits for the unlock. The frames cannot show a lock: a locked iPhone can send none, or keep sending its last app screen.
+- `scripts/slow-viewer.py --device <udid>` watches one of several iPhones.
+
+### Fixed
+
+- **An idle iPhone on USB was not found.** devicectl lists its tunnel as "disconnected" until a command uses it, and glasstap skipped it. On a Mac with no recent devicectl use, WDA never started.
+- **A locked iPhone at WDA start.** glasstap showed "starting" and restarted the run every 180 s. Now it shows "unlock the iPhone" and waits. The run goes on by itself after the unlock.
+
+### Changed
+
+- The project has no Developer ID, so there is no notarized DMG and no Homebrew cask. See decision 6 in [`PLAN.md`](PLAN.md).
+- The prototype reads its SSH host and capture bundle id from `PHONE_REMOTE_HOST` and `PHONE_REMOTE_BUNDLE_ID`.
+
+### Tested on devices
+
+- **24 hours on an iPhone 15** on a second Mac, with a full-speed viewer. The app kept one process, and WDA ran once with no restart. Memory stayed between 93 and 97 MB, and the viewer got 4.5 GB of video. The only gap without frames came from Auto-Lock before it was set to Never.
+- **Two iPhones on one Mac:** each has its own stream and WDA. The paths without `/devices/<id>` answer 409.
+- **Unplug and plug in again:** only that iPhone's session ended, and the other stream had no gap. WDA ran again 24 s after the plug-in.
+- **A dark display and a lock:** the banners showed in the right state, Wake brought the lock screen live, and the banner went away within 3 s of the unlock.
+- **A fresh clone on a Mac with no Homebrew and no XcodeGen:** the team lookup, the XcodeGen download and the Release build took 20 s. WDA started by itself.
+
+### Not tested yet
+
+- Tailscale, and a Wi-Fi change while a LAN address is the listen address.
+- The 7-day profile expiry of a free Apple account.
+- A display that goes dark during a session on an iPhone with no passcode.
+
 ## v0.2.0 (2026-10-06)
 
 glasstap now runs WebDriverAgent (WDA) itself. You install Xcode, enter your team id, plug in an iPhone, and control it from a browser. You start nothing by hand.
