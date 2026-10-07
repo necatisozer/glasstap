@@ -109,7 +109,7 @@ A spike is a short test that decides the design. Do not start a milestone before
 | **S3** Map capture device to UDID | The capture `uniqueID` is not the UDID. Find the link between them. | With two iPhones on USB, each stream matches the right WDA. |
 | **v0.2** WDA manager and robustness | WDA build, sign, start and restart. Access token. Adaptive bitrate. Reconnect. More than one iPhone. See [the v0.2 design](docs/design-v0.2.md). | The app runs for a day with no manual restart. **Released as v0.2.0.** A one-hour run with a full-speed viewer passed: one process, one WDA run, no restart, and memory went from 94 MB to 72 MB. A one-day run, two iPhones, an unplug and Tailscale are not tested yet. |
 | **S4** Measure the delay | A test page on the iPhone shows a millisecond clock. Compare it with the viewer's clock in one screenshot. | The README states the delay on LAN and on a 1.6 Mbit/s link. |
-| **v0.3** Release | Notarized DMG, Homebrew cask, setup guide, benchmark table. | The setup takes less than 10 minutes on a clean Mac. |
+| **v0.3** Install from source | `make install`: a Release app signed with the user's own team, which also signs WDA. A setup guide and a benchmark table. No notarized DMG and no Homebrew cask (decision 6). | The setup takes less than 10 minutes on a clean Mac with Xcode, from a fresh clone. |
 
 ## Spike results
 
@@ -153,12 +153,16 @@ Made on 2026-10-06:
 1. **Name: glasstap.** No GitHub repo and no Homebrew package used it. The first working name, "tapstream", was a mobile marketing SDK, so it would confuse people in the same field.
 2. **Licence: MIT.** It is the simplest choice and the most common one for iOS developer tools. A patent grant (Apache-2.0) matters little for a tool of this size.
 3. **Minimum macOS: 14 (Sonoma).** It has the SwiftUI menu-bar API and every capture and encoder API that the prototype uses. Only macOS 26 is tested so far.
-4. **GitHub owner: necatisozer.** The repo stays private until the prototype no longer holds personal values (the `mac-mini` host and the `com.necatisozer` bundle id).
+4. **GitHub owner: necatisozer.** The repo stays private until the prototype no longer holds personal values (the `mac-mini` host and the `com.necatisozer` bundle id). Since 2026-10-07, the prototype reads both from environment variables.
 5. **JPEG fallback: not in v0.1.** It needs `pymobiledevice3` and the WDA MJPEG stream, which v0.1 avoids. The code stays in `prototype/`.
+
+Made on 2026-10-07:
+
+6. **No signed release.** The owner does not sign glasstap with a Developer ID, so glasstap stays a build from source. An app without a Developer ID signature fails Gatekeeper, and Homebrew turns off casks that fail it, so there is no DMG and no cask. `make install` signs the app with the user's own Apple Development team. That team also signs WDA, and the camera approval stays valid across rebuilds. An ad-hoc signature would make macOS ask for the camera again after each rebuild.
 
 ## Prototype sources
 
-The prototype is in [`prototype/`](prototype/), copied from `~/bin` on 2026-10-06. It works for one setup only: the default SSH host is `mac-mini`, and the bundle id is `com.necatisozer.iphonecapture`.
+The prototype is in [`prototype/`](prototype/), copied from `~/bin` on 2026-10-06. It works for one setup only: one remote Mac over SSH. `phone-remote` takes the SSH host as its argument or from `PHONE_REMOTE_HOST`, and the bundle id of its capture app from `PHONE_REMOTE_BUNDLE_ID`.
 
 - `iphone_capture.swift`: capture, encoder and stream server.
 - `phone_remote.py` and `phone_remote.html`: control server and viewer page.
