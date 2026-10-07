@@ -50,7 +50,8 @@ final class AppModel {
     static let addressPoll: Duration = .seconds(30)
 
     init() {
-        let settings = SettingsStore.load()
+        // Not saved: after an install with another team, the next launch takes that team.
+        let settings = SettingsStore.load().withDefaultTeam(SigningTeam.ofThisApp())
         self.settings = settings
         listeners = ListenCoordinator(ports: Self.ports(settings), devices: directory, pageTemplate: Self.viewerPage)
         boundAddress = listeners.published.address

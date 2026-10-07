@@ -93,3 +93,15 @@ import Testing
         #expect(SettingsStore.load(from: defaults) == .defaults)
     }
 }
+
+@Suite struct SigningTeamTests {
+    @Test func theAppTeamFillsOnlyAnEmptyTeam() {
+        let empty = GlasstapSettings.defaults
+        #expect(empty.withDefaultTeam("ABCDE12345").teamID == "ABCDE12345")
+        #expect(empty.withDefaultTeam(nil) == empty)
+        #expect(empty.withDefaultTeam("not a team") == empty)
+        var set = empty
+        set.teamID = "FGHIJ67890"
+        #expect(set.withDefaultTeam("ABCDE12345").teamID == "FGHIJ67890")
+    }
+}

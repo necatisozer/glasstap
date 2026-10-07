@@ -33,24 +33,32 @@ On the iPhone: Developer Mode on, and the host Mac trusted.
 
 In the browser: WebCodecs with H.265 decoding, for example Chrome or Safari on macOS. If your browser has no H.265, choose H.264 in the settings.
 
-## Build and run
+## Install
 
-1. Install Xcode, and open it once.
-2. Copy `Config/Local.xcconfig.example` to `Config/Local.xcconfig`, and set your team id in it. Then build and open glasstap:
+1. Install Xcode, and open it once. In Xcode > Settings > Accounts, sign in with your Apple account. If Manage Certificates shows no Apple Development certificate, add one.
+2. Install XcodeGen:
 
    ```bash
-   make build
+   brew install xcodegen
+   ```
+
+3. Get the source, and install glasstap:
+
+   ```bash
+   git clone https://github.com/necatisozer/glasstap.git
    ```
 
    ```bash
-   make run
+   cd glasstap && make install
    ```
 
-3. In the Setup window, enter your team id, and click **Save**. Xcode > Settings > Accounts shows it.
+   `make install` finds the team of your Apple Development certificate, and writes it to `Config/Local.xcconfig`. It then builds glasstap, copies it to `~/Applications`, and opens it. glasstap uses the same team for WebDriverAgent. If you have more than one team, `make install` lists them. Then run `make install TEAM=<team id>`.
 4. Plug in the iPhone with a USB cable, unlock it, and tap **Trust**.
 5. On the iPhone, turn on Developer Mode in Settings > Privacy & Security > Developer Mode, and restart the iPhone if it asks.
 6. On the first capture, click **Allow** for "glasstap". macOS asks for camera access, because it treats the iPhone screen as a camera.
 7. In the menu bar, click the glasstap icon, and then click **Open Viewer**.
+
+To update glasstap, run `git pull` and `make install` again. For development, use `make build` and `make run`. They use the team in `Config/Local.xcconfig`.
 
 At the first start, glasstap downloads WebDriverAgent (WDA) 16.12.10 from GitHub and checks its SHA-256. It then builds WDA with your team, and starts it on the iPhone. The first build takes a few minutes. The menu shows each step. If WDA stops answering, or the iPhone is unplugged and plugged in again, glasstap starts WDA again.
 
@@ -116,6 +124,8 @@ If the address goes away, for example when Tailscale or Wi-Fi is off, the app li
 - **One viewer for each iPhone.** If you open a second page for the same iPhone, it takes the stream, and the first page shows "Take it back".
 - **The capture sends frames only while the screen changes.** A still screen uses almost no bandwidth.
 - **If the iPhone display is off, there is no picture.** The app presses Home when the lock screen is in front. If an app is in front, the menu shows "Wake the iPhone", and you wake it yourself.
+- **The viewer shows when the iPhone is locked.** A banner at the top says "The iPhone is locked", with a **Wake screen** button. A passcode, if set, stays for you to enter. If the iPhone was locked when WDA started, the banner asks you to unlock it on the iPhone itself.
+- **For long sessions, set Auto-Lock to Never** on the iPhone, in Settings > Display & Brightness > Auto-Lock. Otherwise the iPhone locks itself after a few minutes without a touch.
 
 ## Security
 

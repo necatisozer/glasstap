@@ -61,6 +61,11 @@ public struct GlasstapSettings: Sendable, Equatable, Codable {
         controlPort: 9300,
         videoPort: 9301)
 
+    /// An Apple team id: 10 capital letters and digits.
+    public static func isTeamID(_ s: String) -> Bool {
+        s.wholeMatch(of: /[A-Z0-9]{10}/) != nil
+    }
+
     /// The signing for WDA, once a team is set.
     public var wdaSigning: WDASigning? {
         guard !teamID.isEmpty else { return nil }
@@ -138,7 +143,7 @@ public struct SettingsInput: Sendable, Equatable {
         guard controlPort != videoPort else { return problem("The two ports must differ.") }
         // Team and prefix go into an xcconfig file and a folder name, so only these characters pass.
         let team = teamID.trimmingCharacters(in: .whitespaces).uppercased()
-        guard team.isEmpty || team.wholeMatch(of: /[A-Z0-9]{10}/) != nil else {
+        guard team.isEmpty || GlasstapSettings.isTeamID(team) else {
             return problem("The team id has 10 letters and digits, such as ABCDE12345.")
         }
         let prefix = wdaBundlePrefix.trimmingCharacters(in: .whitespaces)
