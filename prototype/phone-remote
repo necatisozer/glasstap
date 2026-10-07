@@ -2,7 +2,7 @@
 # Start the iPhone remote in one command: WDA on the remote Mac for taps, the
 # screen stream, the SSH tunnels, and the page on http://127.0.0.1:9300/.
 #
-# Usage: phone-remote [ssh-host]        (default host: mac-mini)
+# Usage: phone-remote [ssh-host]        (default host: $PHONE_REMOTE_HOST)
 # Ctrl-C stops only what this script started. A WDA that was already
 # running (for example, another session's) stays running.
 #
@@ -13,7 +13,10 @@
 #   jpeg:            WDA screenshots through phone_frame_relay.py, about 9 fps.
 set -u
 
-HOST="${1:-mac-mini}"
+HOST="${1:-${PHONE_REMOTE_HOST:-}}"
+[ -n "$HOST" ] || { echo "usage: phone-remote <ssh-host>, or set PHONE_REMOTE_HOST" >&2; exit 2; }
+# The camera approval on the remote Mac belongs to this bundle id. A change asks for it again.
+BUNDLE_ID="${PHONE_REMOTE_BUNDLE_ID:-io.github.glasstap.prototype.capture}"
 MODE="${PHONE_REMOTE_MODE:-video}"
 RUNNER="${PHONE_REMOTE_RUNNER:-dev.uiautomation.wda.xctrunner}"
 # video mode
@@ -89,9 +92,9 @@ echo "Starting WDA and the $MODE stream on $HOST…"
 ssh "$HOST" "mkdir -p -m 700 ~/.glasstap && chmod 700 ~/.glasstap && cat > ~/.glasstap/$SOURCE" < "$HERE/$SOURCE" || exit 1
 printf '%s' "$TOKEN" | ssh "$HOST" 'umask 077 && cat > ~/.glasstap/token' || exit 1
 OUT="$(ssh "$HOST" bash -s -- "$RUNNER" "$MODE" "$SCALE" "$FPS" "$WIDTH" "$JPEG" \
-  "$CODEC" "$VWIDTH" "$BITRATE" "$VFPS" <<'EOF'
+  "$CODEC" "$VWIDTH" "$BITRATE" "$VFPS" "$BUNDLE_ID" <<'EOF'
 RUNNER="$1"; MODE="$2"; SCALE="$3"; FPS="$4"; WIDTH="$5"; JPEG="$6"
-CODEC="$7"; VWIDTH="$8"; BITRATE="$9"; VFPS="${10}"
+CODEC="$7"; VWIDTH="$8"; BITRATE="$9"; VFPS="${10}"; BUNDLE_ID="${11}"
 P=$(ls -d "$HOME"/Library/Python/*/bin/pymobiledevice3 2>/dev/null | head -1)
 [ -n "$P" ] || P=$(command -v pymobiledevice3)
 [ -n "$P" ] || { echo "error: pymobiledevice3 not found"; exit 1; }
@@ -146,11 +149,11 @@ SUM=$(shasum -a 256 $L/iphone_capture.swift | cut -c1-64)
 if [ ! -x "$A/Contents/MacOS/iPhoneCapture" ] || [ "$(cat "$SUMFILE" 2>/dev/null)" != "$SUM" ]; then
   echo "Building iPhoneCapture.app…" >&2
   mkdir -p "$A/Contents/MacOS"
-  cat > "$A/Contents/Info.plist" <<'PLIST'
+  cat > "$A/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleIdentifier</key><string>com.necatisozer.iphonecapture</string>
+<key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
 <key>CFBundleName</key><string>iPhone Capture</string>
 <key>CFBundleExecutable</key><string>iPhoneCapture</string>
 <key>CFBundlePackageType</key><string>APPL</string>
@@ -170,7 +173,7 @@ PLIST
   # the login keychain is locked in an SSH session.
   IDENT=$(security find-identity -v -p codesigning | awk '/Apple Development/ {print $2; exit}')
   [ -n "$IDENT" ] || { echo "error: no Apple Development certificate on this Mac"; exit 1; }
-  LABEL=com.necatisozer.iphonecapture.sign
+  LABEL=$BUNDLE_ID.sign
   cat > $L/sign.plist <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
